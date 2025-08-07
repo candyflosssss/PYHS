@@ -73,7 +73,6 @@ class Game:
                     x = int(cmd[1]) - 1
                     t = int(cmd[2]) if len(cmd) >= 3 else None
                     player.play_card(x, t)
-                    # 这里不需要额外同步，因为我们在play_card方法中已经处理
                     self.show()
                 except Exception as e:
                     print(f"出牌错误: {e}")
@@ -92,6 +91,8 @@ class Game:
                 self.network.send("end")
                 self.turn_num += 1
                 self.is_my_turn = False
+                # 通知对方回合开始
+                self.network.send("start_turn")
                 self.show()
                 break
 
@@ -104,16 +105,18 @@ class Game:
 
     def handle_op_cmd(self, cmd):
         """处理对方发送的命令"""
+        print(f"DEBUG: 接收到命令: '{cmd}'")  # 添加调试信息
         parts = cmd.split()
         if not parts: return
         
         op = parts[0]
+        print(f"DEBUG: 命令部分: {parts}")  # 添加调试信息
         
         if op == 'p':  # 对方出牌
             idx = int(parts[1]) - 1
             t = int(parts[2]) if len(parts) >= 3 else None
-            # 这里只是更新对方手牌数量，实际牌的出现由sync_state处理
-            self.player_op.play_card(idx, t)
+            # 使用网络出牌方法，不会触发交互
+            self.player_op.play_card_network(idx, t)
             self.show()
         
         elif op == 'a':  # 对方攻击
@@ -129,15 +132,26 @@ class Game:
             self.turn_num += 1
             self.is_my_turn = True
             # 处理我方回合开始逻辑
+            self._start_turn()
             self.show()
+        
+        elif op == 'start_turn':  # 对方通知我们回合开始
+            self._start_turn()
         
         elif op == 'WIN':  # 对方赢了
             print("你输了！")
             exit(0)
         
         elif op == 'hp':  # 对方同步生命值
-            self.player_op.hp = int(parts[1])
-            self.player_me.hp = int(parts[2])
+            # 接收到的格式：hp 发送方血量 发送方的对方血量
+            # 发送方是我的对手，所以：
+            # - 发送方血量 = 我看到的对方血量
+            # - 发送方的对方血量 = 我看到的我方血量
+            sender_hp = int(parts[1])
+            sender_opponent_hp = int(parts[2])
+            self.player_op.hp = sender_hp  # 发送方血量就是我的对手血量
+            self.player_me.hp = sender_opponent_hp  # 发送方的对手血量就是我的血量
+            print(f"DEBUG: 接收血量同步 - 对方:{sender_hp} 我方:{sender_opponent_hp}")
             self.show()
 
     def show(self):
@@ -156,3 +170,62 @@ class Game:
             return self.player_me.draw_card()
         else:
             return self.player_op.draw_card()
+    
+    def sync_hp(self):
+        """同步双方血量"""
+        if hasattr(self, 'network'):
+            # 发送格式：hp 我的血量 对方血量（从发送方视角）
+            hp_msg = f"hp {self.player_me.hp} {self.player_op.hp}"
+            self.network.send(hp_msg)
+            print(f"DEBUG: 发送血量同步 - 我方:{self.player_me.hp} 对方:{self.player_op.hp}")
+    
+    def damage_enemy_hero(self, attacker_owner, damage):
+        """对敌方英雄造成伤害并同步（从攻击者角度）"""
+        if attacker_owner == 'me':
+            # 我方攻击，对方受伤
+            self.player_op.hp -= damage
+            print(f"对方英雄受到 {damage} 点伤害")
+        elif attacker_owner == 'op':
+            # 对方攻击，我方受伤  
+            self.player_me.hp -= damage
+            print(f"我方英雄受到 {damage} 点伤害")
+        
+        # 同步血量
+        self.sync_hp()
+        
+        # 检查游戏结束
+        self._check_game_over()
+    
+    def damage_player(self, target_owner, damage):
+        """对玩家造成伤害并同步（指定目标）"""
+        if target_owner == 'me':
+            self.player_me.hp -= damage
+            print(f"我方英雄受到 {damage} 点伤害")
+        elif target_owner == 'op':
+            self.player_op.hp -= damage
+            print(f"对方英雄受到 {damage} 点伤害")
+        
+        # 同步血量
+        self.sync_hp()
+        
+        # 检查游戏结束
+        self._check_game_over()
+    
+    def _check_game_over(self):
+        """检查游戏是否结束"""
+        if self.player_me.hp <= 0:
+            print("你败北了！")
+            self.network.send("WIN")
+            exit(0)
+        elif self.player_op.hp <= 0:
+            print("你获胜了！")
+            self.network.send("WIN")
+            exit(0)
+    
+    def _start_turn(self):
+        """回合开始逻辑"""
+        # 重置我方随从的攻击状态
+        for card in self.battlefield.my_board:
+            card.can_attack = True
+            card.attacks = 0
+        print("DEBUG: 重置我方随从攻击状态")

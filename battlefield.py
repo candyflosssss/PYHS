@@ -37,7 +37,9 @@ class Battlefield:
         """同步战场状态"""
         def board_to_str(board):
             return ';'.join(c.sync_state() for c in board)
+        # 发送格式：s 我方战场|对方战场
         msg = f"s {board_to_str(self.my_board)}|{board_to_str(self.op_board)}"
+        print(f"DEBUG: 发送战场状态: 我方{len(self.my_board)}张牌, 对方{len(self.op_board)}张牌")
         network.send(msg)
 
     def apply_state(self, msg):
@@ -52,16 +54,29 @@ class Battlefield:
             for item in s.split(';'):
                 if not item:
                     continue
-                cls_name, atk, hp, max_hp, attacks, can_attack = item.split(',')
-                from cards import card_types  # 避免循环导入
-                cls = next((c for c in card_types if c.__name__ == cls_name), None)
-                if cls:
-                    card = cls(int(atk), int(max_hp))
-                    card.hp = int(hp)
-                    card.attacks = int(attacks)
-                    card.can_attack = bool(int(can_attack))
-                    res.append(card)
+                parts = item.split(',')
+                if len(parts) >= 6:  # 至少包含基本属性
+                    cls_name, atk, hp, max_hp, attacks, can_attack = parts[:6]
+                    windfury = bool(int(parts[6])) if len(parts) > 6 else False
+                    
+                    from cards import card_types  # 避免循环导入
+                    cls = next((c for c in card_types if c.__name__ == cls_name), None)
+                    if cls:
+                        card = cls(int(atk), int(max_hp))
+                        card.hp = int(hp)
+                        card.attacks = int(attacks)
+                        card.can_attack = bool(int(can_attack))
+                        if windfury:
+                            card.windfury = True
+                        res.append(card)
             return res
 
-        self.op_board = str_to_board(boards[0])
-        self.my_board = str_to_board(boards[1])
+        # 接收到的格式：s 发送方战场|发送方对手战场
+        # 所以：发送方战场=我的对手战场，发送方对手战场=我的战场
+        sender_board = str_to_board(boards[0])
+        sender_opponent_board = str_to_board(boards[1])
+        
+        self.op_board = sender_board  # 发送方的战场就是我的对手战场
+        self.my_board = sender_opponent_board  # 发送方的对手战场就是我的战场
+        
+        print(f"DEBUG: 接收战场状态: 我方{len(self.my_board)}张牌, 对方{len(self.op_board)}张牌")
