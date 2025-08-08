@@ -41,6 +41,10 @@ class MultiPlayerGame:
         self.npc_zone = NPCZone()
         self.resource_zone = ResourceZone()
         
+        # 为了兼容旧的双人模式系统，添加battlefield
+        from battlefield import Battlefield
+        self.battlefield = Battlefield()
+        
         self.game_state_lock = threading.Lock()
         self.running = False
     

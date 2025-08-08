@@ -44,8 +44,8 @@ def main():
 
 def start_pve_multiplayer_game():
     """启动PvE多人游戏"""
-    from pve_controller import start_pve_multiplayer_game as pve_start
-    pve_start()
+    from pve_controller import start_pve_multiplayer_game
+    start_pve_multiplayer_game()
 
 def start_quick_test_game():
     """启动快速测试游戏，使用server/client作为玩家ID，支持老式指令"""

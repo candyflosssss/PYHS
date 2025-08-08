@@ -1,13 +1,10 @@
 """
 新的多人游戏主控制器
-整合三区域游戏机制 + 聊天和操作记录 + 颜色支持 + 滚动功能
+整合三区域游戏机制，支持增强UI显示
 """
 
 from multiplayer_game import GameManager, MultiPlayerGame
-from interactive_display import (
-    show_interactive_game, add_chat_message, add_action_log, add_system_message,
-    scroll_chat_up, scroll_chat_down, scroll_actions_up, scroll_actions_down, reset_scroll
-)
+from enhanced_display import show_enhanced_game, add_chat_message, add_action_log, add_system_message
 import threading
 import time
 
@@ -88,10 +85,8 @@ class MultiPlayerGameController:
                 # 获取当前游戏状态
                 game_state = self.current_game.get_game_state()
                 
-                # 显示游戏界面（包含聊天和操作记录）
-                layout = show_interactive_game(game_state, self.player_id)
-                from rich.console import Console
-                Console().print(layout)
+                # 显示增强游戏界面
+                show_enhanced_game(game_state, self.player_id)
                 
                 # 检查是否是当前玩家的回合
                 current_player = self.current_game.get_current_player()
@@ -161,36 +156,6 @@ class MultiPlayerGameController:
                 target_player = args[0]
                 message = " ".join(args[1:])
                 self.handle_whisper(player, target_player, message)
-                continue
-            
-            elif cmd == 'up' and len(args) >= 1:
-                # 向上滚动命令
-                area = args[0]
-                lines = int(args[1]) if len(args) > 1 else 1
-                if area == 'chat':
-                    scroll_chat_up(lines)
-                    print(f"向上滚动聊天记录 {lines} 行")
-                elif area == 'action':
-                    scroll_actions_up(lines)
-                    print(f"向上滚动操作记录 {lines} 行")
-                continue
-            
-            elif cmd == 'down' and len(args) >= 1:
-                # 向下滚动命令
-                area = args[0]
-                lines = int(args[1]) if len(args) > 1 else 1
-                if area == 'chat':
-                    scroll_chat_down(lines)
-                    print(f"向下滚动聊天记录 {lines} 行")
-                elif area == 'action':
-                    scroll_actions_down(lines)
-                    print(f"向下滚动操作记录 {lines} 行")
-                continue
-            
-            elif cmd == 'reset':
-                # 重置滚动位置
-                reset_scroll()
-                print("已重置滚动位置到最新消息")
                 continue
             
             elif cmd == 'end':
