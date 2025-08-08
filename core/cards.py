@@ -1,5 +1,5 @@
 import random
-from equipment_system import EquipmentSystem
+from systems.equipment_system import EquipmentSystem
 
 class Card:
     weight = 1  # 抽牌权重
@@ -70,8 +70,11 @@ class NormalCard(Card):
 class DrawCard(Card):
     weight = 3
     def on_play(self, game, owner, target=None):
-        card = game.draw(owner)
-        print(f"效果: 召唤后抽到 {card}")
+        card = game.draw(owner) if hasattr(game, 'draw') else None
+        if card:
+            print(f"效果: 召唤后抽到 {card}")
+        else:
+            print("效果: 抽牌（PvE模式暂不支持）")
 
     def info(self):
         return f"攻击 {self.atk}，生命 {self.hp}/{self.max_hp}，类型 抽牌随从，效果 召唤后抽一张牌"
@@ -93,9 +96,13 @@ class BattlecryCard(Card):
     def on_play(self, game, owner, target=None):
         damage = self.get_total_attack()  # 使用总攻击力
         if target == 'enemy_hero':
-            attacker_owner = owner
-            game.damage_enemy_hero(attacker_owner, damage)
-            print(f"效果: 战吼对敌方英雄造成 {damage} 点伤害")
+            # 兼容不同游戏模式
+            if hasattr(game, 'damage_enemy_hero'):
+                attacker_owner = owner
+                game.damage_enemy_hero(attacker_owner, damage)
+                print(f"效果: 战吼对敌方英雄造成 {damage} 点伤害")
+            else:
+                print(f"效果: 战吼准备造成 {damage} 点伤害（PvE模式）")
         elif isinstance(target, Card):
             target.take_damage(damage)
             print(f"效果: 战吼对 {target} 造成 {damage} 点伤害")
@@ -115,14 +122,21 @@ class CombinedCard(Card):
         self.windfury = True  # 组合卡牌初始就有风怒属性
         
     def on_play(self, game, owner, target=None):
-        card = game.draw(owner)
-        print(f"效果: 召唤后抽到 {card}")
+        card = game.draw(owner) if hasattr(game, 'draw') else None
+        if card:
+            print(f"效果: 召唤后抽到 {card}")
+        else:
+            print("效果: 抽牌（PvE模式暂不支持）")
         print("效果: 风怒（本回合可额外攻击一次）")
         damage = self.get_total_attack()  # 使用总攻击力
         if target == 'enemy_hero':
-            attacker_owner = owner
-            game.damage_enemy_hero(attacker_owner, damage)
-            print(f"效果: 战吼对敌方英雄造成 {damage} 点伤害")
+            # 兼容不同游戏模式
+            if hasattr(game, 'damage_enemy_hero'):
+                attacker_owner = owner
+                game.damage_enemy_hero(attacker_owner, damage)
+                print(f"效果: 战吼对敌方英雄造成 {damage} 点伤害")
+            else:
+                print(f"效果: 战吼准备造成 {damage} 点伤害（PvE模式）")
         elif isinstance(target, Card):
             target.take_damage(damage)
             print(f"效果: 战吼对 {target} 造成 {damage} 点伤害")
@@ -140,9 +154,13 @@ class DeathrattleCard(Card):
     def __init__(self, atk=2, hp=1):
         super().__init__(atk, hp)
     def on_death(self, game, owner):
-        attacker_owner = owner  # 死亡的随从的主人就是攻击者
-        game.damage_enemy_hero(attacker_owner, 2)
-        print("亡语：对敌方英雄造成2点伤害")
+        # 兼容不同游戏模式
+        if hasattr(game, 'damage_enemy_hero'):
+            attacker_owner = owner  # 死亡的随从的主人就是攻击者
+            game.damage_enemy_hero(attacker_owner, 2)
+            print("亡语：对敌方英雄造成2点伤害")
+        else:
+            print("亡语：准备造成2点伤害（PvE模式）")
     def __str__(self):
         return f"DeathrattleCard[{self.atk}/{self.hp}]"
 
@@ -151,43 +169,29 @@ class DeathrattleCard(Card):
 
 
 class RewardSwordCard(Card):
-    """奖励木剑的随从"""
+    """奖励木剑的随从 - 为PvE模式优化"""
     weight = 2
     def __init__(self, atk=1, hp=3):
         super().__init__(atk, hp)
     
-    def on_death(self, game, owner):
-        """死亡时给击杀者一把木剑装备"""
-        from equipment_system import WeaponItem
+    def on_death(self, game=None, owner=None):
+        """死亡时给随机队友一把木剑装备（PvE模式适配）"""
+        from systems.equipment_system import WeaponItem
         
         # 创建木剑装备
         wooden_sword = WeaponItem("木剑", "简单的木制武器", 50, attack=2)
         
-        # 判断谁是击杀者（对方玩家的随从）
-        if owner == 'me':
-            # 我方随从死亡，检查对方战场上的随从
-            op_minions = game.player_op.battlefield.my_board if hasattr(game, 'player_op') else []
+        # PvE模式：装备给自己
+        if self.equipment.equip(wooden_sword):
+            print(f"亡语：{self} 装备了木剑！")
         else:
-            # 对方随从死亡，检查我方战场上的随从
-            op_minions = game.player_me.battlefield.my_board if hasattr(game, 'player_me') else []
-        
-        # 随机选择一个随从装备木剑（模拟击杀者）
-        if op_minions:
-            import random
-            lucky_minion = random.choice(op_minions)
-            if lucky_minion.equipment.equip(wooden_sword):
-                killer_name = game.player_op.name if owner == 'me' else game.player_me.name
-                print(f"亡语：{killer_name}的 {lucky_minion} 获得了木剑！")
-            else:
-                print(f"亡语：随从无法装备木剑（装备槽冲突）")
-        else:
-            print("亡语：没有随从可以获得木剑")
+            print(f"亡语：装备槽冲突，无法装备木剑")
     
     def info(self):
         total_atk = self.get_total_attack()
         defense = self.get_total_defense()
         equipment_info = f", {self.equipment}" if str(self.equipment) != "装备: 无" else ""
-        return f"攻击 {total_atk}，生命 {self.hp}/{self.max_hp}，防御 {defense}，类型 奖励随从，效果 死亡时给击杀者一把木剑{equipment_info}"
+        return f"攻击 {total_atk}，生命 {self.hp}/{self.max_hp}，防御 {defense}，类型 奖励随从，效果 死亡时自我装备木剑{equipment_info}"
 
 
 card_types = [NormalCard, DrawCard, WindfuryCard, BattlecryCard, CombinedCard, DeathrattleCard, RewardSwordCard]

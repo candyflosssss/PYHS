@@ -7,9 +7,8 @@ PvE多人游戏核心实现
 import threading
 import time
 from enum import Enum
-from battlefield import Battlefield
-from player import Player
-from cards import draw_card
+from core.player import Player
+from core.cards import draw_card
 import random
 
 class GamePhase(Enum):
@@ -138,8 +137,8 @@ class PvEMultiplayerGame:
                 player.hand = []
                 for _ in range(3):
                     player.draw_card()
-                # 清空战场
-                player.battlefield = Battlefield()
+                # 清空战场 - 使用简单列表代替battlefield对象
+                player.board = []  # 玩家战场上的随从
             
             # 初始化游戏区域
             self._initialize_zones()
@@ -164,7 +163,7 @@ class PvEMultiplayerGame:
     
     def _initialize_zones(self):
         """初始化游戏区域"""
-        from pve_content_factory import ResourceFactory, EnemyFactory, BossFactory
+        from game_modes.pve_content_factory import ResourceFactory, EnemyFactory, BossFactory
         
         player_count = len(self.players)
         
@@ -214,7 +213,7 @@ class PvEMultiplayerGame:
         
         # 重置所有玩家随从的攻击状态
         for player in self.players.values():
-            for card in player.battlefield.my_board:
+            for card in player.board:  # 使用简化的board列表
                 card.can_attack = True
         
         # 系统回合结束，开始玩家回合
@@ -223,7 +222,7 @@ class PvEMultiplayerGame:
     
     def _refill_zones(self):
         """根据在场人数填充资源区和敌人区"""
-        from pve_content_factory import ResourceFactory, EnemyFactory
+        from game_modes.pve_content_factory import ResourceFactory, EnemyFactory
         
         player_count = len(self.players)
         
@@ -268,7 +267,7 @@ class PvEMultiplayerGame:
                 # 重置新玩家随从的攻击状态
                 next_player = self.get_current_player()
                 if next_player:
-                    for card in next_player.battlefield.my_board:
+                    for card in next_player.board:  # 使用简化的board列表
                         card.can_attack = True
     
     def collect_resource(self, player_id, resource_index):
@@ -284,7 +283,7 @@ class PvEMultiplayerGame:
             # 将资源添加到玩家背包
             if hasattr(player, 'inventory'):
                 # 创建一个简单的物品对象用于背包系统
-                from inventory import Item
+                from systems.inventory import Item
                 item = Item(resource.name, resource.item_type, max_stack=10)
                 player.inventory.add_item(item, 1)
             
@@ -299,10 +298,10 @@ class PvEMultiplayerGame:
             player = self.players[player_id]
             
             # 获取攻击者（玩家的随从）
-            if attacker_index < 0 or attacker_index >= len(player.battlefield.my_board):
+            if attacker_index < 0 or attacker_index >= len(player.board):
                 return False, "无效的攻击者"
             
-            attacker = player.battlefield.my_board[attacker_index]
+            attacker = player.board[attacker_index]
             if not attacker.can_attack:
                 return False, "该随从本回合已攻击过"
             
@@ -324,7 +323,7 @@ class PvEMultiplayerGame:
             
             # 检查攻击者是否死亡
             if attacker.hp <= 0:
-                player.battlefield.my_board.remove(attacker)
+                player.board.remove(attacker)
             
             return True, f"攻击成功"
     
@@ -340,10 +339,10 @@ class PvEMultiplayerGame:
             player = self.players[player_id]
             
             # 获取攻击者
-            if attacker_index < 0 or attacker_index >= len(player.battlefield.my_board):
+            if attacker_index < 0 or attacker_index >= len(player.board):
                 return False, "无效的攻击者"
             
-            attacker = player.battlefield.my_board[attacker_index]
+            attacker = player.board[attacker_index]
             if not attacker.can_attack:
                 return False, "该随从本回合已攻击过"
             
@@ -369,19 +368,19 @@ class PvEMultiplayerGame:
             
             # 获取攻击者
             if (attacker_index < 0 or 
-                attacker_index >= len(attacker_player.battlefield.my_board)):
+                attacker_index >= len(attacker_player.board)):
                 return False, "无效的攻击者"
             
-            attacker = attacker_player.battlefield.my_board[attacker_index]
+            attacker = attacker_player.board[attacker_index]
             if not attacker.can_attack:
                 return False, "该随从本回合已攻击过"
             
             # 获取目标
             if (target_index < 0 or 
-                target_index >= len(target_player.battlefield.my_board)):
+                target_index >= len(target_player.board)):
                 return False, "无效的目标"
             
-            target = target_player.battlefield.my_board[target_index]
+            target = target_player.board[target_index]
             
             # 执行攻击
             target.take_damage(attacker.attack)
@@ -390,10 +389,10 @@ class PvEMultiplayerGame:
             
             # 检查死亡
             if target.hp <= 0:
-                target_player.battlefield.my_board.remove(target)
+                target_player.board.remove(target)
             
             if attacker.hp <= 0:
-                attacker_player.battlefield.my_board.remove(attacker)
+                attacker_player.board.remove(attacker)
             
             return True, f"攻击成功"
     
@@ -410,7 +409,7 @@ class PvEMultiplayerGame:
                     'hp': p.hp,
                     'max_hp': p.max_hp,
                     'hand_count': len(p.hand),
-                    'battlefield_count': len(p.battlefield.my_board)
+                    'board_count': len(p.board)  # 使用简化的board列表
                 } for pid, p in self.players.items()},
                 'player_order': self.player_order,
                 'resource_zone': [str(r) for r in self.resource_zone],

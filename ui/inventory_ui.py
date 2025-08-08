@@ -49,10 +49,9 @@ def get_player_items(player):
     return {}
 
 def get_player_board(player):
-    """获取玩家战场随从"""
-    if hasattr(player, 'game') and player.game:
-        battlefield = player.game.battlefield
-        return battlefield.my_board if player.is_me else battlefield.op_board
+    """获取玩家战场随从 - PvE简化版本"""
+    if hasattr(player, 'board'):
+        return player.board
     return []
 
 def print_inventory(items):
@@ -220,7 +219,7 @@ def perform_equip(player, card, item_name, item_obj):
     """执行装备操作"""
     # 确保随从有装备系统
     if not hasattr(card, 'equipment'):
-        from equipment_system import EquipmentSystem
+        from systems.equipment_system import EquipmentSystem
         card.equipment = EquipmentSystem()
     
     # 尝试装备

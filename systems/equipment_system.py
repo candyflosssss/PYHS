@@ -1,4 +1,4 @@
-from inventory import EquipmentItem
+from .inventory import EquipmentItem
 
 class WeaponItem(EquipmentItem):
     """武器装备"""

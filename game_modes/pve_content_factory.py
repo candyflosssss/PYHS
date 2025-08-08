@@ -3,7 +3,7 @@ PvE游戏内容工厂
 创建敌人、资源、Boss等游戏内容
 """
 
-from pve_multiplayer_game import Enemy, ResourceItem, Boss
+from game_modes.pve_multiplayer_game import Enemy, ResourceItem, Boss
 
 class EnemyFactory:
     """敌人工厂"""

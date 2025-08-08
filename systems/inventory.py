@@ -219,7 +219,7 @@ class MaterialItem(Item):
 def create_sample_items():
     """创建一些示例物品"""
     # 导入装备系统中的武器类
-    from equipment_system import WeaponItem
+    from .equipment_system import WeaponItem
     
     return [
         EquipmentItem("铁剑", "一把普通的铁制长剑", 80),

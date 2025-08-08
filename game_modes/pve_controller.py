@@ -3,7 +3,7 @@ PvE多人游戏启动器
 独立的PvE游戏启动和控制逻辑
 """
 
-from pve_multiplayer_game import PvEGameManager, PvEMultiplayerGame, GamePhase
+from game_modes.pve_multiplayer_game import PvEGameManager, PvEMultiplayerGame, GamePhase
 import time
 import os
 
@@ -194,7 +194,7 @@ class PvEGameController:
             marker = " <- 当前回合" if current_player and pid == current_player.player_id else ""
             marker += " (你)" if pid == self.player_id else ""
             print(f"  {i+1}. {player_data['name']} HP:{player_data['hp']}/{player_data['max_hp']} "
-                  f"手牌:{player_data['hand_count']} 随从:{player_data['battlefield_count']}{marker}")
+                  f"手牌:{player_data['hand_count']} 随从:{player_data['board_count']}{marker}")
         
         # 显示我的详细信息
         if my_player:
@@ -204,9 +204,9 @@ class PvEGameController:
             for i, card in enumerate(my_player.hand, 1):
                 print(f"    {i}. {card}")
             
-            if my_player.battlefield.my_board:
-                print(f"  我的随从 ({len(my_player.battlefield.my_board)}):")
-                for i, minion in enumerate(my_player.battlefield.my_board, 1):
+            if my_player.board:  # 使用简化的board列表
+                print(f"  我的随从 ({len(my_player.board)}):")
+                for i, minion in enumerate(my_player.board, 1):
                     attack_status = "可攻击" if minion.can_attack else "已攻击"
                     print(f"    {i}. {minion} ({attack_status})")
             else:
@@ -361,8 +361,8 @@ class PvEGameController:
             elif 1 <= idx <= len(player.hand):  # 查看手牌
                 card = player.hand[idx-1]
                 print(f"🃏 手牌 {idx}：{card.info()}")
-            elif idx > 100 and idx-100 <= len(player.battlefield.my_board):  # 查看我方战场
-                card = player.battlefield.my_board[idx-101]
+            elif idx > 100 and idx-100 <= len(player.board):  # 查看我方战场
+                card = player.board[idx-101]  # 使用简化的board列表
                 print(f"⚔️ 我方随从 {idx-100}：{card.info()}")
             else:
                 print("❌ 无效的索引")
@@ -371,7 +371,7 @@ class PvEGameController:
     
     def handle_bag(self, player):
         """处理背包操作"""
-        from inventory_ui import show_inventory_menu
+        from ui.inventory_ui import show_inventory_menu
         show_inventory_menu(player)
     
     def show_help(self):
