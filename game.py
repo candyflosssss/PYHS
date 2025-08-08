@@ -43,9 +43,17 @@ class Game:
                 print("操作：")
                 print("  p X [T]   - 出牌 第 X 张 手牌, 可选目标 T")
                 print("  a seq     - 攻击链, 如 1,1/2,3/1,0")
+                print("  bag       - 打开背包和装备管理")
                 print("  help      - 显示帮助")
                 print("  info X    - 显示第 X 号卡牌详细信息")
                 print("  end       - 结束回合")
+                continue
+
+            if op == 'bag':
+                # 打开背包管理界面
+                from inventory_ui import show_inventory_menu
+                show_inventory_menu(player)
+                self.show()  # 背包操作后刷新游戏界面
                 continue
 
             if op == 'info' and len(cmd) >= 2:

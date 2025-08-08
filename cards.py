@@ -1,14 +1,35 @@
 import random
+from equipment_system import EquipmentSystem
 
 class Card:
     weight = 1  # 抽牌权重
 
     def __init__(self, atk, hp):
         self.atk = atk
+        self.base_atk = atk  # 基础攻击力
         self.hp = hp
         self.max_hp = hp  # 记录最大生命值
         self.attacks = 0
         self.can_attack = False
+        self.equipment = EquipmentSystem()  # 添加装备系统
+
+    def get_total_attack(self):
+        """获取总攻击力（基础+装备）"""
+        return self.base_atk + self.equipment.get_total_attack()
+    
+    def get_total_defense(self):
+        """获取总防御力"""
+        return self.equipment.get_total_defense()
+    
+    def take_damage(self, damage):
+        """处理卡牌受到伤害（考虑防御力）"""
+        defense = self.get_total_defense()
+        actual_damage = max(1, damage - defense)  # 至少造成1点伤害
+        self.hp -= actual_damage
+        if defense > 0:
+            print(f"{self} 防御减免{defense}点伤害，实际受到 {actual_damage} 点伤害，当前生命值为 {self.hp}")
+        else:
+            print(f"{self} 受到了 {actual_damage} 点伤害，当前生命值为 {self.hp}")
 
     def on_play(self, game, owner, target=None):
         """出场触发（子类重写）"""
@@ -18,11 +39,6 @@ class Card:
         """死亡触发（子类重写）"""
         pass
 
-    def take_damage(self, damage):
-        """处理卡牌受到伤害"""
-        self.hp -= damage
-        print(f"{self} 受到了 {damage} 点伤害，当前生命值为 {self.hp}")
-
     def heal(self, amount):
         """处理卡牌回血"""
         self.hp = min(self.hp + amount, self.max_hp)
@@ -31,14 +47,19 @@ class Card:
     def sync_state(self):
         """将卡牌状态转换为字符串"""
         windfury = getattr(self, 'windfury', False)
-        return f"{self.__class__.__name__},{self.atk},{self.hp},{self.max_hp},{self.attacks},{int(self.can_attack)},{int(windfury)}"
+        total_atk = self.get_total_attack()
+        return f"{self.__class__.__name__},{total_atk},{self.hp},{self.max_hp},{self.attacks},{int(self.can_attack)},{int(windfury)}"
 
     def info(self):
         """返回卡牌的详细信息"""
-        return f"攻击 {self.atk}，生命 {self.hp}/{self.max_hp}，类型 基础随从，无特殊效果"
+        total_atk = self.get_total_attack()
+        defense = self.get_total_defense()
+        equipment_info = f", {self.equipment}" if str(self.equipment) != "装备: 无" else ""
+        return f"攻击 {total_atk}，生命 {self.hp}/{self.max_hp}，防御 {defense}，类型 基础随从{equipment_info}"
 
     def __str__(self):
-        return f"{self.__class__.__name__}[{self.atk}/{self.hp}]"
+        total_atk = self.get_total_attack()
+        return f"{self.__class__.__name__}[{total_atk}/{self.hp}]"
     
     def __repr__(self):
         return self.__str__()
@@ -70,18 +91,22 @@ class WindfuryCard(Card):
 class BattlecryCard(Card):
     weight = 3
     def on_play(self, game, owner, target=None):
+        damage = self.get_total_attack()  # 使用总攻击力
         if target == 'enemy_hero':
-            attacker_owner = owner  # owner就是攻击者
-            game.damage_enemy_hero(attacker_owner, self.atk)
-            print(f"效果: 战吼对敌方英雄造成 {self.atk} 点伤害")
+            attacker_owner = owner
+            game.damage_enemy_hero(attacker_owner, damage)
+            print(f"效果: 战吼对敌方英雄造成 {damage} 点伤害")
         elif isinstance(target, Card):
-            target.hp -= self.atk
-            print(f"效果: 战吼对 {target} 造成 {self.atk} 点伤害")
+            target.take_damage(damage)
+            print(f"效果: 战吼对 {target} 造成 {damage} 点伤害")
         else:
             print("效果: 战吼缺少目标")
 
     def info(self):
-        return f"攻击 {self.atk}，生命 {self.hp}/{self.max_hp}，类型 战吼随从，效果 召唤时对一个目标造成攻击力点伤害"
+        total_atk = self.get_total_attack()
+        defense = self.get_total_defense()
+        equipment_info = f", {self.equipment}" if str(self.equipment) != "装备: 无" else ""
+        return f"攻击 {total_atk}，生命 {self.hp}/{self.max_hp}，防御 {defense}，类型 战吼随从，效果 召唤时对一个目标造成攻击力点伤害{equipment_info}"
 
 class CombinedCard(Card):
     weight = 5
@@ -93,18 +118,22 @@ class CombinedCard(Card):
         card = game.draw(owner)
         print(f"效果: 召唤后抽到 {card}")
         print("效果: 风怒（本回合可额外攻击一次）")
+        damage = self.get_total_attack()  # 使用总攻击力
         if target == 'enemy_hero':
-            attacker_owner = owner  # owner就是攻击者
-            game.damage_enemy_hero(attacker_owner, self.atk)
-            print(f"效果: 战吼对敌方英雄造成 {self.atk} 点伤害")
+            attacker_owner = owner
+            game.damage_enemy_hero(attacker_owner, damage)
+            print(f"效果: 战吼对敌方英雄造成 {damage} 点伤害")
         elif isinstance(target, Card):
-            target.hp -= self.atk
-            print(f"效果: 战吼对 {target} 造成 {self.atk} 点伤害")
+            target.take_damage(damage)
+            print(f"效果: 战吼对 {target} 造成 {damage} 点伤害")
         else:
             print("效果: 战吼缺少目标")
 
     def info(self):
-        return f"攻击 {self.atk}，生命 {self.hp}/{self.max_hp}，类型 3合一随从，效果 召唤后抽牌+风怒+战吼"
+        total_atk = self.get_total_attack()
+        defense = self.get_total_defense()
+        equipment_info = f", {self.equipment}" if str(self.equipment) != "装备: 无" else ""
+        return f"攻击 {total_atk}，生命 {self.hp}/{self.max_hp}，防御 {defense}，类型 3合一随从，效果 召唤后抽牌+风怒+战吼{equipment_info}"
 
 class DeathrattleCard(Card):
     weight = 1
@@ -120,7 +149,48 @@ class DeathrattleCard(Card):
     def info(self):
         return f"攻击 {self.atk}，生命 {self.hp}/{self.max_hp}，类型 亡语随从，效果 死亡时对敌方英雄造成2点伤害"
 
-card_types = [NormalCard, DrawCard, WindfuryCard, BattlecryCard, CombinedCard, DeathrattleCard]
+
+class RewardSwordCard(Card):
+    """奖励木剑的随从"""
+    weight = 2
+    def __init__(self, atk=1, hp=3):
+        super().__init__(atk, hp)
+    
+    def on_death(self, game, owner):
+        """死亡时给击杀者一把木剑装备"""
+        from equipment_system import WeaponItem
+        
+        # 创建木剑装备
+        wooden_sword = WeaponItem("木剑", "简单的木制武器", 50, attack=2)
+        
+        # 判断谁是击杀者（对方玩家的随从）
+        if owner == 'me':
+            # 我方随从死亡，检查对方战场上的随从
+            op_minions = game.player_op.battlefield.my_board if hasattr(game, 'player_op') else []
+        else:
+            # 对方随从死亡，检查我方战场上的随从
+            op_minions = game.player_me.battlefield.my_board if hasattr(game, 'player_me') else []
+        
+        # 随机选择一个随从装备木剑（模拟击杀者）
+        if op_minions:
+            import random
+            lucky_minion = random.choice(op_minions)
+            if lucky_minion.equipment.equip(wooden_sword):
+                killer_name = game.player_op.name if owner == 'me' else game.player_me.name
+                print(f"亡语：{killer_name}的 {lucky_minion} 获得了木剑！")
+            else:
+                print(f"亡语：随从无法装备木剑（装备槽冲突）")
+        else:
+            print("亡语：没有随从可以获得木剑")
+    
+    def info(self):
+        total_atk = self.get_total_attack()
+        defense = self.get_total_defense()
+        equipment_info = f", {self.equipment}" if str(self.equipment) != "装备: 无" else ""
+        return f"攻击 {total_atk}，生命 {self.hp}/{self.max_hp}，防御 {defense}，类型 奖励随从，效果 死亡时给击杀者一把木剑{equipment_info}"
+
+
+card_types = [NormalCard, DrawCard, WindfuryCard, BattlecryCard, CombinedCard, DeathrattleCard, RewardSwordCard]
 weights = [ct.weight for ct in card_types]
 
 def draw_card():

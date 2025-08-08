@@ -218,13 +218,17 @@ class MaterialItem(Item):
 # 示例物品
 def create_sample_items():
     """创建一些示例物品"""
-    return {
-        "iron_sword": EquipmentItem("铁剑", "一把普通的铁制长剑", 80),
-        "health_potion": ConsumableItem("生命药水", "恢复50点生命值", 5),
-        "wood": MaterialItem("木材", "建造用的基础材料"),
-        "stone": MaterialItem("石头", "坚硬的建造材料"),
-        "bread": ConsumableItem("面包", "简单的食物，恢复少量生命值", 10)
-    }
+    # 导入装备系统中的武器类
+    from equipment_system import WeaponItem
+    
+    return [
+        EquipmentItem("铁剑", "一把普通的铁制长剑", 80),
+        ConsumableItem("生命药水", "恢复50点生命值", 5),
+        MaterialItem("木材", "建造用的基础材料"),
+        MaterialItem("石头", "坚硬的建造材料"), 
+        ConsumableItem("面包", "简单的食物，恢复少量生命值", 10),
+        WeaponItem("木剑", "简陋的木制武器，提供2点攻击力", 50, 2, "右手")
+    ]
 
 
 if __name__ == "__main__":
