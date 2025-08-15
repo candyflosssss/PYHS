@@ -1,8 +1,3 @@
-"""
-简化的游戏界面显示系统
-支持多人游戏的三区域布局（无颜色依赖）
-"""
-
 import os
 
 class GameDisplay:

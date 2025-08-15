@@ -20,6 +20,15 @@ class Card:
     def get_total_defense(self):
         """获取总防御力"""
         return self.equipment.get_total_defense()
+
+    # 兼容属性访问：允许以 card.attack / card.defense 获取动态数值
+    @property
+    def attack(self):
+        return self.get_total_attack()
+
+    @property
+    def defense(self):
+        return self.get_total_defense()
     
     def take_damage(self, damage):
         """处理卡牌受到伤害（考虑防御力）"""
@@ -109,6 +118,11 @@ class BattlecryCard(Card):
         else:
             print("效果: 战吼缺少目标")
 
+    # 兼容旧接口：部分逻辑会直接调用 battlecry
+    def battlecry(self, owner, target=None):
+        game = getattr(owner, 'game', None)
+        self.on_play(game, owner, target)
+
     def info(self):
         total_atk = self.get_total_attack()
         defense = self.get_total_defense()
@@ -142,6 +156,10 @@ class CombinedCard(Card):
             print(f"效果: 战吼对 {target} 造成 {damage} 点伤害")
         else:
             print("效果: 战吼缺少目标")
+
+    def battlecry(self, owner, target=None):
+        game = getattr(owner, 'game', None)
+        self.on_play(game, owner, target)
 
     def info(self):
         total_atk = self.get_total_attack()

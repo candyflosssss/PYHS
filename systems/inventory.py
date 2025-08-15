@@ -204,14 +204,14 @@ class EquipmentItem(Item):
 
 class ConsumableItem(Item):
     """消耗品物品（可堆叠）"""
-    def __init__(self, name, description="", max_stack=10, effect=None):
+    def __init__(self, name, description="", max_stack=4, effect=None):
         super().__init__(name, "消耗品", max_stack=max_stack, description=description)
         self.effect = effect  # 使用效果函数
 
 
 class MaterialItem(Item):
     """材料物品（高度堆叠）"""
-    def __init__(self, name, description="", max_stack=99):
+    def __init__(self, name, description="", max_stack=16):
         super().__init__(name, "材料", max_stack=max_stack, description=description)
 
 

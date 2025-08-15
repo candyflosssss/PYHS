@@ -1,9 +1,9 @@
 """
-PvE游戏内容工厂
-创建敌人、资源、Boss等游戏内容
+PvE游戏内容工厂：创建敌人、资源、Boss
+抽离至 entities 以降低耦合。
 """
 
-from game_modes.pve_multiplayer_game import Enemy, ResourceItem, Boss
+from game_modes.entities import Enemy, ResourceItem, Boss
 
 class EnemyFactory:
     """敌人工厂"""

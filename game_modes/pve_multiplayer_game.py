@@ -1,14 +1,13 @@
 """
-PvE多人游戏核心实现
-支持不限人数的多人合作对抗PvE内容
-包含准备房间、资源区、敌人区等新机制
+PvE多人游戏核心实现（精简版）
+保留核心机制，抽离通用实体，提升可读性与扩展性。
 """
 
 import threading
-import time
 from enum import Enum
 from core.player import Player
 from core.cards import draw_card
+from game_modes.entities import Enemy, ResourceItem, Boss
 import random
 
 class GamePhase(Enum):
@@ -19,55 +18,6 @@ class GamePhase(Enum):
     SYSTEM_TURN = "系统回合"
     PLAYER_TURN = "玩家回合"
     GAME_OVER = "游戏结束"
-
-class Enemy:
-    """敌人卡牌类"""
-    def __init__(self, name, attack, hp, death_effect=None):
-        self.name = name
-        self.attack = attack
-        self.hp = hp
-        self.max_hp = hp
-        self.death_effect = death_effect
-        self.can_attack = True
-    
-    def __str__(self):
-        return f"{self.name}({self.attack}/{self.hp})"
-    
-    def take_damage(self, damage):
-        """受到伤害"""
-        self.hp -= damage
-        return self.hp <= 0
-    
-    def on_death(self, game):
-        """死亡效果"""
-        if self.death_effect:
-            self.death_effect(game)
-
-class ResourceItem:
-    """资源物品类"""
-    def __init__(self, name, item_type, effect_value):
-        self.name = name
-        self.item_type = item_type  # 'weapon', 'potion', etc.
-        self.effect_value = effect_value
-    
-    def __str__(self):
-        return f"{self.name}(+{self.effect_value})"
-
-class Boss:
-    """Boss类"""
-    def __init__(self, name="终极Boss", hp=100):
-        self.name = name
-        self.hp = hp
-        self.max_hp = hp
-        self.attack = 0  # Boss不主动攻击
-    
-    def take_damage(self, damage):
-        """受到伤害"""
-        self.hp -= damage
-        return self.hp <= 0
-    
-    def __str__(self):
-        return f"{self.name}({self.hp}/{self.max_hp})"
 
 class PvEMultiplayerGame:
     """PvE多人游戏管理器"""
@@ -311,10 +261,8 @@ class PvEMultiplayerGame:
             
             enemy = self.enemy_zone[enemy_index]
             
-            # 执行攻击
-            enemy.take_damage(attacker.attack)
-            attacker.take_damage(enemy.attack)
-            attacker.can_attack = False
+            # 执行战斗
+            self._resolve_combat(attacker, enemy)
             
             # 检查敌人是否死亡
             if enemy.hp <= 0:
@@ -382,10 +330,8 @@ class PvEMultiplayerGame:
             
             target = target_player.board[target_index]
             
-            # 执行攻击
-            target.take_damage(attacker.attack)
-            attacker.take_damage(target.attack)
-            attacker.can_attack = False
+            # 执行战斗
+            self._resolve_combat(attacker, target)
             
             # 检查死亡
             if target.hp <= 0:
@@ -426,6 +372,14 @@ class PvEMultiplayerGame:
         if current_player:
             return current_player.draw_card()
         return None
+
+    # --- 内部工具 ---
+    def _resolve_combat(self, attacker, defender):
+        """简化的战斗解析：双方互相造成一次伤害并标记攻击过"""
+        defender.take_damage(attacker.attack)
+        if hasattr(defender, 'attack'):
+            attacker.take_damage(defender.attack)
+        attacker.can_attack = False
 
 class PvEGameManager:
     """PvE游戏管理器"""

@@ -23,7 +23,11 @@ def main():
 
 def start_pve_multiplayer_game():
     """启动PvE多人游戏"""
-    from game_modes.pve_controller import start_pve_multiplayer_game as pve_start
+    try:
+        from game_modes.pve_controller import start_pve_multiplayer_game as pve_start
+    except ImportError:
+        # 兼容旧定义或退化成单人流程
+        from game_modes.pve_controller import start_simple_pve_game as pve_start
     pve_start()
 
 if __name__ == "__main__":

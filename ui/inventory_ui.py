@@ -1,8 +1,3 @@
-"""
-背包和装备管理界面
-提供玩家背包管理、装备系统和消耗品使用的图形化界面
-"""
-
 def show_inventory_menu(player):
     """显示背包管理菜单"""
     while True:

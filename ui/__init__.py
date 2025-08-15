@@ -1,3 +1,3 @@
-# UI package - 用户界面包
-from .game_display import *
-from .inventory_ui import *
+from .inventory_ui import *  # noqa: F401,F403
+
+__all__ = [name for name in globals() if not name.startswith('_')]
