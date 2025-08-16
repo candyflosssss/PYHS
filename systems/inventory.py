@@ -192,6 +192,65 @@ class Inventory:
             if slot.item.description:
                 print(f"   描述: {slot.item.description}")
 
+    # === 新增：使用物品 ===
+    def use_item(self, item_name: str, amount: int = 1, player=None, target=None):
+        """
+        使用背包中的物品。
+        - 消耗品：执行效果函数（若提供），每次使用消耗1个。
+        - 装备：需要目标(target)且目标具有 equipment 属性；装备成功后消耗1个。
+        返回 (ok: bool, msg: str)
+        """
+        if amount <= 0:
+            return False, "数量需大于0"
+        used = 0
+        # 延迟导入，避免循环依赖
+        try:
+            from .equipment_system import WeaponItem, ArmorItem, ShieldItem
+        except Exception:
+            WeaponItem = ArmorItem = ShieldItem = tuple()
+
+        for slot in list(self.slots):
+            if slot.item.name != item_name:
+                continue
+
+            item = slot.item
+            # 装备物品
+            if isinstance(item, (WeaponItem, ArmorItem, ShieldItem)):
+                if target is None or not hasattr(target, 'equipment'):
+                    return False, "该物品需要目标(如 m1)来装备"
+                # 执行装备（若 player.game 存在则传入以统一日志管道）
+                game = getattr(player, 'game', None) if player is not None else None
+                ok = target.equipment.equip(item, game=game)
+                if not ok:
+                    return False, "装备失败：槽位冲突或条件不满足"
+                slot.remove(1)
+                if slot.is_empty():
+                    self.slots.remove(slot)
+                return True, f"为 {target} 装备了 {item.name}"
+
+            # 消耗品
+            if isinstance(item, ConsumableItem):
+                times = min(amount - used, slot.quantity)
+                for _ in range(times):
+                    if callable(getattr(item, 'effect', None)):
+                        try:
+                            item.effect(player, target)
+                        except Exception:
+                            pass
+                    slot.remove(1)
+                    used += 1
+                    if slot.is_empty():
+                        self.slots.remove(slot)
+                        break
+                if used >= amount:
+                    break
+
+            # 其他物品类型暂不支持使用
+
+        if used > 0:
+            return True, f"已使用 {item_name} x{used}"
+        return False, f"未找到可使用的 {item_name}"
+
 
 # 预定义一些常见物品类型
 class EquipmentItem(Item):

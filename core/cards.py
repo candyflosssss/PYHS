@@ -35,10 +35,7 @@ class Card:
         defense = self.get_total_defense()
         actual_damage = max(1, damage - defense)  # 至少造成1点伤害
         self.hp -= actual_damage
-        if defense > 0:
-            print(f"{self} 防御减免{defense}点伤害，实际受到 {actual_damage} 点伤害，当前生命值为 {self.hp}")
-        else:
-            print(f"{self} 受到了 {actual_damage} 点伤害，当前生命值为 {self.hp}")
+    # 保持安静，效果日志由具体技能/控制器负责
 
     def on_play(self, game, owner, target=None):
         """出场触发（子类重写）"""
@@ -51,7 +48,7 @@ class Card:
     def heal(self, amount):
         """处理卡牌回血"""
         self.hp = min(self.hp + amount, self.max_hp)
-        print(f"{self} 恢复了 {amount} 点生命值，当前生命值为 {self.hp}")
+    # 效果日志交由上层统一处理
 
     def sync_state(self):
         """将卡牌状态转换为字符串"""
@@ -81,9 +78,9 @@ class DrawCard(Card):
     def on_play(self, game, owner, target=None):
         card = game.draw(owner) if hasattr(game, 'draw') else None
         if card:
-            print(f"效果: 召唤后抽到 {card}")
+            _log(game, f"{self} 召唤后抽到 {card}")
         else:
-            print("效果: 抽牌（PvE模式暂不支持）")
+            _log(game, f"{self} 尝试抽牌，但当前模式不支持")
 
     def info(self):
         return f"攻击 {self.atk}，生命 {self.hp}/{self.max_hp}，类型 抽牌随从，效果 召唤后抽一张牌"
@@ -95,13 +92,14 @@ class WindfuryCard(Card):
         self.windfury = True  # 风怒卡牌初始就有风怒属性
         
     def on_play(self, game, owner, target=None):
-        print("效果: 本回合可额外攻击一次")
+        _log(game, f"{self} 获得风怒，本回合可额外攻击一次")
 
     def info(self):
         return f"攻击 {self.atk}，生命 {self.hp}/{self.max_hp}，类型 风怒随从，效果 每回合可额外攻击一次"
 
 class BattlecryCard(Card):
     weight = 3
+    requires_target = True
     def on_play(self, game, owner, target=None):
         damage = self.get_total_attack()  # 使用总攻击力
         if target == 'enemy_hero':
@@ -109,14 +107,43 @@ class BattlecryCard(Card):
             if hasattr(game, 'damage_enemy_hero'):
                 attacker_owner = owner
                 game.damage_enemy_hero(attacker_owner, damage)
-                print(f"效果: 战吼对敌方英雄造成 {damage} 点伤害")
+                _log(game, f"{self} 使用战吼效果对敌方英雄造成 {damage} 点伤害")
             else:
-                print(f"效果: 战吼准备造成 {damage} 点伤害（PvE模式）")
+                _log(game, f"{self} 的战吼准备造成 {damage} 点伤害（PvE模式）")
         elif isinstance(target, Card):
             target.take_damage(damage)
-            print(f"效果: 战吼对 {target} 造成 {damage} 点伤害")
+            _log(game, f"{self} 使用战吼效果对 {target} 造成 {damage} 点伤害")
+        elif target is not None:
+            # 兼容 PvE 的 Enemy/Boss：有 take_damage 或 hp 的对象
+            if hasattr(target, 'take_damage'):
+                died = target.take_damage(damage)
+                _log(game, f"{self} 使用战吼效果对 {target} 造成 {damage} 点伤害")
+                # 敌人死亡时从游戏移除并触发亡语
+                game_ref = game
+                try:
+                    if died and game_ref is not None:
+                        removed = False
+                        if hasattr(game_ref, 'enemies') and isinstance(getattr(game_ref, 'enemies'), list):
+                            if target in game_ref.enemies:
+                                target.on_death(game_ref)
+                                game_ref.enemies.remove(target)
+                                removed = True
+                        if not removed and hasattr(game_ref, 'enemy_zone') and isinstance(getattr(game_ref, 'enemy_zone'), list):
+                            if target in game_ref.enemy_zone:
+                                target.on_death(game_ref)
+                                game_ref.enemy_zone.remove(target)
+                                removed = True
+                        # Boss 被击杀：结束游戏（若有 running 标志）
+                        if not removed and hasattr(game_ref, 'boss') and target is getattr(game_ref, 'boss') and getattr(target, 'hp', 1) <= 0:
+                            if hasattr(game_ref, 'running'):
+                                game_ref.running = False
+                except Exception:
+                    pass
+            elif hasattr(target, 'hp'):
+                target.hp -= damage
+                _log(game, f"{self} 使用战吼效果对目标造成 {damage} 点伤害")
         else:
-            print("效果: 战吼缺少目标")
+            _log(game, f"{self} 战吼缺少目标")
 
     # 兼容旧接口：部分逻辑会直接调用 battlecry
     def battlecry(self, owner, target=None):
@@ -131,6 +158,7 @@ class BattlecryCard(Card):
 
 class CombinedCard(Card):
     weight = 5
+    requires_target = True
     def __init__(self, atk, hp):
         super().__init__(atk, hp)
         self.windfury = True  # 组合卡牌初始就有风怒属性
@@ -138,24 +166,50 @@ class CombinedCard(Card):
     def on_play(self, game, owner, target=None):
         card = game.draw(owner) if hasattr(game, 'draw') else None
         if card:
-            print(f"效果: 召唤后抽到 {card}")
+            _log(game, f"{self} 召唤后抽到 {card}")
         else:
-            print("效果: 抽牌（PvE模式暂不支持）")
-        print("效果: 风怒（本回合可额外攻击一次）")
+            _log(game, f"{self} 尝试抽牌，但当前模式不支持")
+        _log(game, f"{self} 获得风怒，本回合可额外攻击一次")
         damage = self.get_total_attack()  # 使用总攻击力
         if target == 'enemy_hero':
             # 兼容不同游戏模式
             if hasattr(game, 'damage_enemy_hero'):
                 attacker_owner = owner
                 game.damage_enemy_hero(attacker_owner, damage)
-                print(f"效果: 战吼对敌方英雄造成 {damage} 点伤害")
+                _log(game, f"{self} 使用战吼效果对敌方英雄造成 {damage} 点伤害")
             else:
-                print(f"效果: 战吼准备造成 {damage} 点伤害（PvE模式）")
+                _log(game, f"{self} 的战吼准备造成 {damage} 点伤害（PvE模式）")
         elif isinstance(target, Card):
             target.take_damage(damage)
-            print(f"效果: 战吼对 {target} 造成 {damage} 点伤害")
+            _log(game, f"{self} 使用战吼效果对 {target} 造成 {damage} 点伤害")
+        elif target is not None:
+            if hasattr(target, 'take_damage'):
+                died = target.take_damage(damage)
+                _log(game, f"{self} 使用战吼效果对 {target} 造成 {damage} 点伤害")
+                game_ref = game
+                try:
+                    if died and game_ref is not None:
+                        removed = False
+                        if hasattr(game_ref, 'enemies') and isinstance(getattr(game_ref, 'enemies'), list):
+                            if target in game_ref.enemies:
+                                target.on_death(game_ref)
+                                game_ref.enemies.remove(target)
+                                removed = True
+                        if not removed and hasattr(game_ref, 'enemy_zone') and isinstance(getattr(game_ref, 'enemy_zone'), list):
+                            if target in game_ref.enemy_zone:
+                                target.on_death(game_ref)
+                                game_ref.enemy_zone.remove(target)
+                                removed = True
+                        if not removed and hasattr(game_ref, 'boss') and target is getattr(game_ref, 'boss') and getattr(target, 'hp', 1) <= 0:
+                            if hasattr(game_ref, 'running'):
+                                game_ref.running = False
+                except Exception:
+                    pass
+            elif hasattr(target, 'hp'):
+                target.hp -= damage
+                _log(game, f"{self} 使用战吼效果对目标造成 {damage} 点伤害")
         else:
-            print("效果: 战吼缺少目标")
+            _log(game, f"{self} 战吼缺少目标")
 
     def battlecry(self, owner, target=None):
         game = getattr(owner, 'game', None)
@@ -176,9 +230,9 @@ class DeathrattleCard(Card):
         if hasattr(game, 'damage_enemy_hero'):
             attacker_owner = owner  # 死亡的随从的主人就是攻击者
             game.damage_enemy_hero(attacker_owner, 2)
-            print("亡语：对敌方英雄造成2点伤害")
+            _log(game, "亡语：对敌方英雄造成2点伤害")
         else:
-            print("亡语：准备造成2点伤害（PvE模式）")
+            _log(game, "亡语：准备造成2点伤害（PvE模式）")
     def __str__(self):
         return f"DeathrattleCard[{self.atk}/{self.hp}]"
 
@@ -200,10 +254,10 @@ class RewardSwordCard(Card):
         wooden_sword = WeaponItem("木剑", "简单的木制武器", 50, attack=2)
         
         # PvE模式：装备给自己
-        if self.equipment.equip(wooden_sword):
-            print(f"亡语：{self} 装备了木剑！")
+        if self.equipment.equip(wooden_sword, game):
+            _log(game, f"亡语：{self} 装备了木剑！")
         else:
-            print(f"亡语：装备槽冲突，无法装备木剑")
+            _log(game, f"亡语：装备槽冲突，无法装备木剑")
     
     def info(self):
         total_atk = self.get_total_attack()
@@ -220,3 +274,13 @@ def draw_card():
     atk = random.randint(1, 5)
     hp = random.randint(1, 5)
     return cls(atk, hp)
+
+# --- 内部日志工具 ---
+def _log(game, text: str):
+    try:
+        if game is not None and hasattr(game, 'log'):
+            game.log(text)
+        else:
+            print(text)
+    except Exception:
+        print(text)

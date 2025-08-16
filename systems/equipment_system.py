@@ -48,28 +48,37 @@ class EquipmentSystem:
         self.right_hand = None
         self.armor = None
     
-    def equip(self, equipment):
-        """装备物品"""
+    def _log(self, game, text: str):
+        try:
+            if game is not None and hasattr(game, 'log'):
+                game.log(text)
+            else:
+                print(text)
+        except Exception:
+            print(text)
+
+    def equip(self, equipment, game=None):
+        """装备物品（可选传入 game，用于统一日志输出）"""
         if equipment.slot_type == "armor":
             self.armor = equipment
-            print(f"装备盔甲: {equipment}")
+            self._log(game, f"装备盔甲: {equipment}")
         elif equipment.is_two_handed:
             # 双手武器，清空双手槽位
             self.left_hand = equipment
             self.right_hand = None
-            print(f"装备双手武器: {equipment}")
+            self._log(game, f"装备双手武器: {equipment}")
         elif equipment.slot_type == "left_hand":
             if self.left_hand and self.left_hand.is_two_handed:
-                print("无法装备，左手持有双手武器")
+                self._log(game, "无法装备，左手持有双手武器")
                 return False
             self.left_hand = equipment
-            print(f"装备左手: {equipment}")
+            self._log(game, f"装备左手: {equipment}")
         elif equipment.slot_type == "right_hand":
             if self.left_hand and self.left_hand.is_two_handed:
-                print("无法装备，持有双手武器")
+                self._log(game, "无法装备，持有双手武器")
                 return False
             self.right_hand = equipment
-            print(f"装备右手: {equipment}")
+            self._log(game, f"装备右手: {equipment}")
         return True
     
     def unequip(self, slot):

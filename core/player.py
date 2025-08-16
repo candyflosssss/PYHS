@@ -20,23 +20,25 @@ class Player:
         return card
 
     def play_card(self, card_idx, target=None):
-        """出牌逻辑 - PvE简化版本"""
+        """出牌逻辑（支持目标选择与统一 on_play 回调）"""
         if card_idx < 0 or card_idx >= len(self.hand):
             return False
-        
+
         card = self.hand[card_idx]
-        
+
         # 简化的出牌逻辑，直接添加到战场
         if len(self.board) < 7:  # 最多7张牌
             self.board.append(card)
             self.hand.pop(card_idx)
-            
-            # 触发战吼效果
-            if isinstance(card, BattlecryCard):
-                card.battlecry(self, target)
-            elif isinstance(card, CombinedCard):
-                card.battlecry(self, target)
-            
+
+            # 统一触发 on_play
+            try:
+                card.on_play(getattr(self, 'game', None), self, target)
+            except Exception:
+                # 兜底：老逻辑仍可通过 battlecry 触发
+                if isinstance(card, BattlecryCard) or isinstance(card, CombinedCard):
+                    card.battlecry(self, target)
+
             return True
         return False
 
@@ -75,9 +77,9 @@ class Player:
         if self.hp > self.max_hp:
             self.hp = self.max_hp
 
-    def use_item(self, item_name, amount=1):
-        """使用物品"""
-        return self.inventory.use_item(item_name, amount, self)
+    def use_item(self, item_name, amount=1, target=None):
+        """使用物品（可指定目标，如 m1 随从）"""
+        return self.inventory.use_item(item_name, amount, self, target)
 
     def add_item(self, item, amount=1):
         """添加物品到背包"""

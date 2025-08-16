@@ -1,0 +1,20 @@
+{
+  "board": [
+    {"atk": 2, "hp": 3},
+    {"atk": 1, "hp": 4}
+  ],
+  "enemies": [
+  {"name": "未上锁的木门", "attack": 0, "hp": 2, "on_death": {"action": "transition", "to": "scene_2.json", "preserve_board": true}},
+    {"name": "自定义盗贼", "attack": 2, "hp": 5,
+     "drops": [
+       {"name": "皮甲", "type": "armor", "value": 2},
+       {"name": "生命药水", "type": "potion", "value": 3}
+     ]
+    },
+    {"name": "骷髅"}
+  ],
+  "resources": [
+    {"name": "木剑"},
+    {"name": "自定义材料", "type": "material", "value": 4}
+  ]
+}
