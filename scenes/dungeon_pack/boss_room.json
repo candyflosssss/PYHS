@@ -1,0 +1,13 @@
+{
+  "title": "首领之间",
+  "enemies": [
+    {"name": "地牢主宰·死灵法师", "attack": 5, "hp": 20, "drops": [
+      {"name": "传送卷轴: 出口", "type": "scroll", "value": 1}
+    ], "on_death": {"action": "transition", "to": "exit.json", "preserve_board": true}},
+    {"name": "亡灵从者", "attack": 2, "hp": 7}
+  ],
+  "resources": [
+    {"name": "空瓶", "type": "material", "value": 1},
+    {"name": "药草", "type": "material", "value": 2}
+  ]
+}

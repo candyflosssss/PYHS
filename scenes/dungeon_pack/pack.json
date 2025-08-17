@@ -1,0 +1,5 @@
+{
+  "name": "地牢远征",
+  "mains": ["main_entrance.json"],
+  "description": "四人小队深入古老地牢，收集钥匙与素材，合成药水，击败主宰。"
+}

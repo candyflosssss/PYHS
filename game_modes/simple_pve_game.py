@@ -13,6 +13,7 @@ from game_modes.entities import Enemy, ResourceItem
 from game_modes.pve_content_factory import EnemyFactory, ResourceFactory
 from core.player import Player
 from core.cards import NormalCard
+from ui import colors as C
 
 
 class SimplePvEGame:
@@ -21,13 +22,15 @@ class SimplePvEGame:
         self.player = Player(player_name, is_me=True, game=self)
         self.turn = 1
         self.running = True
-        self.enemies: List[Enemy] = []
-        self.resources: List[ResourceItem] = []
+        self.enemies = []
+        self.resources = []
         # 日志缓冲（控制器会读取并清空）
-        self._log_buffer: list[str] = []
+        self._log_buffer = []
         # 场景管理
         self._scene_base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scenes'))
-        self.current_scene: str | None = None
+        self.current_scene = None
+        self.current_scene_title = None
+        self._scene_meta = None  # 保存本场景的一些行为配置（如 on_clear）
         # 兼容旧接口
         self.resource_zone = self.resources
         self.players = {self.player.name: self.player}
@@ -60,8 +63,18 @@ class SimplePvEGame:
             return False
         scene_path = scene_name_or_path
         if not os.path.isabs(scene_path):
-            scene_path = os.path.join(self._scene_base_dir, scene_name_or_path)
-        scene_path = os.path.abspath(scene_path)
+            # 首先尝试基于 scenes 根目录
+            candidate = os.path.join(self._scene_base_dir, scene_name_or_path)
+            candidate = os.path.abspath(candidate)
+            # 若不存在且当前场景已知，则基于当前场景所在目录回退解析（支持地图组内相对切换）
+            if not os.path.exists(candidate) and self.current_scene:
+                cur_dir = os.path.dirname(os.path.abspath(self.current_scene))
+                alt = os.path.abspath(os.path.join(cur_dir, scene_name_or_path))
+                scene_path = alt if os.path.exists(alt) else candidate
+            else:
+                scene_path = candidate
+        else:
+            scene_path = os.path.abspath(scene_path)
         data = {}
         try:
             with open(scene_path, 'r', encoding='utf-8') as f:
@@ -72,6 +85,22 @@ class SimplePvEGame:
 
         # 记录当前场景
         self.current_scene = scene_path
+        # 记录友好场景标题
+        try:
+            base = os.path.splitext(os.path.basename(scene_path))[0]
+            human = base.replace('_', ' ')
+            title = data.get('title') or data.get('name') or human
+            self.current_scene_title = str(title)
+        except Exception:
+            self.current_scene_title = None
+
+        # 保存场景元数据（兜底跳转等）
+        try:
+            self._scene_meta = {
+                'on_clear': data.get('on_clear'),
+            }
+        except Exception:
+            self._scene_meta = None
 
         # 清空/保留
         preserved_board = list(self.player.board) if keep_board else []
@@ -102,7 +131,9 @@ class SimplePvEGame:
                 if m is not None:
                     self.player.board.append(m)
 
-        self.log(f"进入场景: {os.path.basename(scene_path)}")
+        # 使用更友好的标题进行日志
+        shown = self.current_scene_title or os.path.basename(scene_path)
+        self.log(f"进入场景: {shown}")
         return True
 
     def transition_to_scene(self, scene_name_or_path: str, preserve_board: bool = False):
@@ -132,6 +163,9 @@ class SimplePvEGame:
         # 场景模式：无自动伤害/刷新，仅推进回合并恢复随从攻击
         self.turn += 1
         self.start_turn()
+        # 若敌人已清空且场景定义 on_clear，则尝试切换，避免卡住
+        if not self.enemies:
+            self._check_on_clear_transition()
 
     # --- 行动 ---
     def play_card(self, idx: int, target=None):
@@ -146,27 +180,48 @@ class SimplePvEGame:
         if not m.can_attack:
             return False, '该随从本回合已攻击过'
         e = self.enemies[enemy_idx]
-        # 互相伤害并记录具体数值
+        from systems import skills as SK
+        # 牧师：对己方目标时视为治疗（控制器命令仍是 a mN eN；此处聚焦对敌）
+        # 这里的 a 指令默认敌方目标；若未来引入 a mN mK 则在控制器分支实现。
+
+        # 对敌伤害
         prev_e = e.hp
         dead = e.take_damage(m.attack)
         dealt = max(0, prev_e - e.hp)
         self.log(f"{m} 攻击 {e.name}，造成 {dealt} 伤害（{e.hp}/{e.max_hp}）")
-        if hasattr(e, 'attack'):
+
+        # 反击判定：0 攻不反击、进攻方带 no_counter 不被反击
+        if SK.should_counter(m, e):
             prev_m = m.hp
-            m.take_damage(e.attack)
+            m.take_damage(getattr(e, 'attack', 0))
             back = max(0, prev_m - m.hp)
-            self.log(f"{e.name} 反击 {m}，造成 {back} 伤害（{m.hp}/{m.max_hp}）")
+            if back > 0:
+                self.log(f"{e.name} 反击 {m}，造成 {back} 伤害（{m.hp}/{m.max_hp}）")
         m.can_attack = False
         if dead:
+            # 若死亡效果触发场景切换，需避免继续操作已被重置的敌人列表
+            prev_scene = self.current_scene
             # 亡语可能依赖多人接口，这里容错
             try:
                 e.on_death(self)
             except Exception:
                 pass
-            self.enemies.pop(enemy_idx)
+            # 若场景已发生变化（例如触发切换），直接返回
+            if self.current_scene != prev_scene:
+                return True, '攻击成功'
+            # 否则按常规流程移除该敌人
+            try:
+                self.enemies.pop(enemy_idx)
+            except Exception:
+                # 防御性：索引可能已失效
+                pass
             self.log(f"{e.name} 被消灭")
         if m.hp <= 0:
             self.player.board.remove(m)
+        # 若清场且存在 on_clear 兜底切换，则尝试执行
+        if not self.enemies:
+            if self._check_on_clear_transition():
+                return True, '攻击成功'
         return True, '攻击成功'
 
     # Boss 攻击逻辑已移除（场景模式无 Boss）
@@ -178,7 +233,12 @@ class SimplePvEGame:
     # --- 日志 ---
     def log(self, text: str):
         # 控制器会在每次操作后读取并清空该缓冲
-        self._log_buffer.append(str(text))
+        # 确保日志无 ANSI 颜色码
+        try:
+            clean = C.strip(str(text))
+        except Exception:
+            clean = str(text)
+        self._log_buffer.append(clean)
 
     def pop_logs(self) -> list[str]:
         logs = self._log_buffer[:]
@@ -253,6 +313,22 @@ class SimplePvEGame:
         except Exception:
             return None
 
+    # --- 兜底：清场触发 ---
+    def _check_on_clear_transition(self) -> bool:
+        """若场景元数据包含 on_clear 且敌人已清空，则执行跳转。
+        返回是否发生了切换。
+        """
+        try:
+            meta = self._scene_meta or {}
+            oc = meta.get('on_clear') if isinstance(meta, dict) else None
+            if isinstance(oc, dict) and oc.get('action') == 'transition':
+                to_scene = oc.get('to')
+                preserve = bool(oc.get('preserve_board', True))
+                return bool(self.transition_to_scene(to_scene, preserve_board=preserve))
+        except Exception:
+            pass
+        return False
+
     def _make_resource(self, rd):
         # rd 可以是字符串名称或包含 name/type/value 的对象
         try:
@@ -285,7 +361,13 @@ class SimplePvEGame:
             if isinstance(md, dict):
                 atk = int(md.get('atk', 1))
                 hp = int(md.get('hp', 1))
-                return NormalCard(atk, hp)
+                name = md.get('name')
+                tags = md.get('tags')
+                passive = md.get('passive') or md.get('passives')
+                skills = md.get('skills')
+                # 兼容 UGC 字段：透传到卡牌
+                m = NormalCard(atk, hp, name=str(name) if name else None, tags=tags, passive=passive, skills=skills)
+                return m
             if isinstance(md, (list, tuple)) and len(md) >= 2:
                 return NormalCard(int(md[0]), int(md[1]))
             return None

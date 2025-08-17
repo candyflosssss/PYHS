@@ -1,0 +1,10 @@
+{
+  "title": "熔炉间",
+  "enemies": [
+    {"name": "炼金台", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "mid_guard.json", "preserve_board": true}}
+  ],
+  "resources": [
+    {"name": "配方: 大治疗药水", "type": "recipe", "value": 1},
+    {"name": "铜锭", "type": "material", "value": 2}
+  ]
+}

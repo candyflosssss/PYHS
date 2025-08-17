@@ -1,0 +1,12 @@
+{
+  "title": "首领前厅",
+  "enemies": [
+    {"name": "铁门(钥)", "attack": 0, "hp": 3, "on_death": {"action": "transition", "to": "boss_room.json", "preserve_board": true}},
+    {"name": "精英守卫", "attack": 4, "hp": 12, "drops": [
+      {"name": "钥匙齿C", "type": "key", "value": 1}
+    ]}
+  ],
+  "resources": [
+    {"name": "空瓶", "type": "material", "value": 1}
+  ]
+}

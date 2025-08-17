@@ -1,0 +1,18 @@
+{
+  "title": "地牢入口",
+  "board": [
+    {"name": "战士·阿朗", "atk": 6, "hp": 14, "tags": ["warrior"]},
+    {"name": "法师·伊莲", "atk": 8, "hp": 8, "tags": ["mage"], "passive": {"no_counter": true}},
+    {"name": "坦克·巴尔", "atk": 3, "hp": 18, "tags": ["tank"], "passive": {"taunt": true}},
+    {"name": "牧师·茜茜", "atk": 0, "hp": 12, "tags": ["healer"], "skills": [{"name": "治疗", "heal": 4}]}
+  ],
+  "enemies": [
+    {"name": "封闭的木门", "attack": 0, "hp": 3, "on_death": {"action": "transition", "to": "hallway.json", "preserve_board": true}},
+    {"name": "巡逻蝙蝠", "attack": 1, "hp": 2},
+    {"name": "破碎雕像", "attack": 0, "hp": 1, "drops": [{"name": "断裂石块", "type": "material", "value": 1}]}
+  ],
+  "resources": [
+    {"name": "木棍"},
+    {"name": "药草", "type": "material", "value": 2}
+  ]
+}

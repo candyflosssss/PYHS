@@ -1,5 +1,6 @@
 import random
 from systems.equipment_system import EquipmentSystem
+from ui import colors as C
 
 class Card:
     weight = 1  # 抽牌权重
@@ -12,6 +13,10 @@ class Card:
         self.attacks = 0
         self.can_attack = False
         self.equipment = EquipmentSystem()  # 添加装备系统
+        # 技能/被动可选字段（UGC可注入）
+        self.tags = []          # e.g. ["healer","mage","tank"]
+        self.passive = {}       # e.g. {"no_counter":true}
+        self.skills = []        # e.g. [{"name":"治疗","heal":4}]
 
     def get_total_attack(self):
         """获取总攻击力（基础+装备）"""
@@ -65,13 +70,27 @@ class Card:
 
     def __str__(self):
         total_atk = self.get_total_attack()
-        return f"{self.__class__.__name__}[{total_atk}/{self.hp}]"
+        name = getattr(self, 'display_name', self.__class__.__name__)
+        return C.friendly(f"{name}[{total_atk}/{self.hp}]")
     
     def __repr__(self):
         return self.__str__()
 
 class NormalCard(Card):
     weight = 1
+    def __init__(self, atk, hp, *, name: str | None = None, tags=None, passive=None, skills=None):
+        super().__init__(atk, hp)
+        if name:
+            setattr(self, 'display_name', name)
+        if tags:
+            try: self.tags = list(tags)
+            except Exception: pass
+        if passive:
+            try: self.passive = dict(passive)
+            except Exception: pass
+        if skills:
+            try: self.skills = list(skills)
+            except Exception: pass
 
 class DrawCard(Card):
     weight = 3
@@ -234,7 +253,8 @@ class DeathrattleCard(Card):
         else:
             _log(game, "亡语：准备造成2点伤害（PvE模式）")
     def __str__(self):
-        return f"DeathrattleCard[{self.atk}/{self.hp}]"
+        # 统一走基类的着色显示
+        return super().__str__()
 
     def info(self):
         return f"攻击 {self.atk}，生命 {self.hp}/{self.max_hp}，类型 亡语随从，效果 死亡时对敌方英雄造成2点伤害"

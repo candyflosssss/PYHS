@@ -7,17 +7,24 @@
 from typing import Callable, List, Tuple
 
 from game_modes.simple_pve_game import SimplePvEGame
+from ui import colors as C
 
 
 class SimplePvEController:
-    def __init__(self):
-        name = input("请输入你的名字: ").strip() or "玩家"
+    def __init__(self, player_name: str | None = None, initial_scene: str | None = None):
+        name = (player_name or '').strip() or input("请输入你的名字: ").strip() or "玩家"
         self.game = SimplePvEGame(name)
+        # 指定初始场景（若提供）
+        if initial_scene:
+            try:
+                self.game.load_scene(initial_scene, keep_board=False)
+            except Exception:
+                pass
         self.game.start_turn()
-        self.history: list[str] = []  # 操作历史（最近 50 条）
-        self.info: list[str] = []     # 信息区（最近一次关键反馈）
+        self.history = []  # 操作历史（最近 10 条）
+        self.info = []     # 信息区（最近一次关键反馈）
         # 区块渲染映射
-        self.sections: dict[str, Callable[[], str]] = {
+        self.sections = {
             '0': self._section_player,
             '1': self._section_enemy,
             '2': self._section_resources,
@@ -31,9 +38,10 @@ class SimplePvEController:
         self.MSG_HELP = (
             "s <编号> : 显示区域 (0=自己 1=敌人 2=资源 3=历史 4=背包 5=信息)\n"
             "p <手牌序号> : 出牌\n"
-            "a <随从序号> e<敌人序号> : 攻击该敌人\n"
-            "take <资源序号> : 拾取资源到背包\n"
-            "use <物品名> [mN] : 使用背包物品(可指定目标随从)\n"
+            "a <队伍序号|mN> e<敌人序号> : 攻击该敌人\n"
+            "take|t <rN|序号> : 拾取资源到背包\n"
+            "use|u <物品名> [mN] : 使用背包物品(可指定目标队伍成员)\n"
+            "craft|c [list|<索引|名称>] : 合成（背包中会显示可合成，用 cN 快速合成）\n"
             "end : 结束回合\n"
             "i|inv : 查看背包  | h : 帮助  | q : 退出"
         )
@@ -61,32 +69,41 @@ class SimplePvEController:
 
     def _record(self, line: str):
         self.history.append(line)
-        if len(self.history) > 50:
+        if len(self.history) > 10:
             self.history.pop(0)
 
     # --- 区域内容 ---
     def _section_player(self):
-        s = self.game.get_state()
-        lines = [f"回合:{s['turn']}"]
-        lines.append("手牌:")
-        if s['hand']:
-            for i, c in enumerate(s['hand'], 1):
-                lines.append(f"  {i}. {c}")
-        else:
-            lines.append("  (空)")
-        lines.append("随从:")
-        if s['board']:
-            for c in s['board']:
-                lines.append(f"  {c}")
+        # 直接读取对象以便展示可攻标签
+        board = self.game.player.board
+        lines = [C.label(f"队伍({len(board)}):")]
+        if board:
+            pairs: list[tuple[str, str]] = []
+            for i, m in enumerate(board, 1):
+                status = C.dim('·已攻') if not getattr(m, 'can_attack', False) else C.dim('·可攻')
+                pairs.append((f"m{i}", f"{str(m)} {status}"))
+            lines.extend(self._format_token_list(pairs))
         else:
             lines.append("  (空)")
         return "\n".join(lines)
 
+    # --- 渲染辅助 ---
+    def _format_token_list(self, pairs: list[tuple[str, str]], pad: int = 2) -> list[str]:
+        """将 [(token, text)] 渲染为对齐的行：token 左对齐，名称列起始对齐。
+        例如："e1  未上锁的木门(0/2)" / "m1  张伟[8/8]"
+        """
+        if not pairs:
+            return []
+        w = max(len(t) for t, _ in pairs)
+        gap = ' ' * pad
+        return [f"  {t.ljust(w)}{gap}{s}" for t, s in pairs]
+
     def _section_enemy(self):
-        s = self.game.get_state()
-        lines = [f"回合:{s['turn']}", "敌人:"]
-        if s['enemies']:
-            lines.extend(f"  {e}" for e in s['enemies'])
+        enemies = getattr(self.game, 'enemies', None) or getattr(self.game, 'enemy_zone', [])
+        lines = [C.label(f"敌人({len(enemies)}):")]
+        if enemies:
+            pairs = [(f"e{i}", str(e)) for i, e in enumerate(enemies, 1)]
+            lines.extend(self._format_token_list(pairs))
         else:
             lines.append("  (无)")
         return "\n".join(lines)
@@ -94,33 +111,56 @@ class SimplePvEController:
     def _section_resources(self):
         s = self.game.get_state()
         res = s.get('resources', [])
-        lines = [f"回合:{s['turn']}", "资源区:"]
+        lines = [C.label(f"资源区({len(res)}):")]
         if res:
-            for i, r in enumerate(res, 1):
-                lines.append(f"  {i}. {r}")
+            pairs = [(f"r{i}", str(r)) for i, r in enumerate(res, 1)]
+            lines.extend(self._format_token_list(pairs))
         else:
             lines.append("  (空)")
         return "\n".join(lines)
 
     def _section_inventory(self):
         inv = self.game.player.inventory
-        lines = [f"背包 ({len(inv.slots)}/{inv.max_slots})"]
+        lines = [C.label(f"背包({len(inv.slots)}/{inv.max_slots}):")]
         if inv.slots:
-            for i, slot in enumerate(inv.slots, 1):
-                lines.append(f"  {i}. {slot}")
+            pairs = [(f"i{i}", str(slot)) for i, slot in enumerate(inv.slots, 1)]
+            lines.extend(self._format_token_list(pairs))
         else:
             lines.append("  (空)")
+        # 附加可合成清单
+        craftables = self._craftable_recipes()
+        lines.append(C.label(f"可合成({len(craftables)}):"))
+        if craftables:
+            cpairs = [(f"c{i}", r['name']) for i, r in enumerate(craftables, 1)]
+            lines.extend(self._format_token_list(cpairs))
+            lines.append(C.dim("提示: 输入 c1/c2... 可快速合成"))
+        else:
+            lines.append("  (暂无可合成配方)")
         return "\n".join(lines)
 
     def _section_history(self):
         if not self.history:
             return "历史: (无)"
-        return "历史(最新在下):\n" + "\n".join(self.history[-20:])
+        return "历史(最新在下):\n" + "\n".join(self.history[-10:])
 
     def _section_info(self):
         if not self.info:
             return "信息区: (无)"
-        return "信息区:\n" + "\n".join(self.info[-10:])
+        lines: list[str] = [C.heading("信息区:")]
+        recent = self.info[-10:]
+        for i, line in enumerate(recent):
+            if i == 0:
+                txt = line
+                if any(k in txt for k in ("失败", "无效", "错误")):
+                    lines.append(C.error(txt))
+                elif any(k in txt for k in ("成功", "进入回合", "拾取", "使用", "攻击")):
+                    lines.append(C.success(txt))
+                else:
+                    lines.append(C.warning(txt))
+            else:
+                # 次要细节用淡色
+                lines.append(C.dim(line))
+        return "\n".join(lines)
 
     def _show_section(self, idx: str):
         func = self.sections.get(idx)
@@ -129,6 +169,34 @@ class SimplePvEController:
             return
         content = func()
         self._print(content)
+
+    def _render_full_view(self) -> str:
+        sep = C.dim('────────────────────────────────')
+        parts: list[str] = []
+        # 场景标题（显眼）
+        try:
+            scene_name = getattr(self.game, 'current_scene_title', None) or self.game.current_scene
+            if scene_name:
+                import os
+                title = scene_name if getattr(self.game, 'current_scene_title', None) else os.path.basename(scene_name)
+                parts.append(C.heading(f"【场景】{title}"))
+                parts.append(sep)
+        except Exception:
+            pass
+        # 信息区置顶
+        parts.append(self._section_info())
+        parts.append(sep)
+        # 队伍 -> 敌人 -> 资源 -> 背包 -> 历史
+        parts.append(self._section_player())
+        parts.append(sep)
+        parts.append(self._section_enemy())
+        parts.append(sep)
+        parts.append(self._section_resources())
+        parts.append(sep)
+        parts.append(self._section_inventory())
+        parts.append(sep)
+        parts.append(self._section_history())
+        return "\n".join(parts)
 
     # --- 主循环 ---
     def loop(self):
@@ -166,37 +234,43 @@ class SimplePvEController:
                 func = self.sections.get(key)
                 out.append(func() if func else self.MSG_INVALID_SECTION)
             else:
-                # 等价于 "s 0-s 1-s 2-s 3"
-                for key in ['0','1','2','3','4','5']:
-                    out.append(self.sections[key]())
+                # 展示完整视图（信息区置顶）
+                out.append(self._render_full_view())
             return out, False
+        # craft 简化：支持 craft 与 c
+        if c in ('craft', 'c'):
+            return self._cmd_craft(args), False
         if c in ('i', 'inv'):
             out.append(self._section_inventory())
             return out, False
-        if c == 'take':
+        if c in ('take', 't'):
             if not args:
                 # 缺少参数时列出现有资源并给出用法
                 s = self.game.get_state()
                 res = s.get('resources', [])
-                lines = ["缺少资源序号。用法: take <资源序号>"]
+                lines = ["缺少资源序号。用法: take|t <rN|序号>"]
                 if res:
                     lines.append('当前资源:')
-                    for i, r in enumerate(res, 1):
-                        lines.append(f"  {i}. {r}")
+                    pairs = [(f"r{i}", str(r)) for i, r in enumerate(res, 1)]
+                    lines.extend(self._format_token_list(pairs))
                 else:
                     lines.append('资源区当前为空')
                 return lines, False
             try:
-                ridx = int(args[0]) - 1
+                arg0 = args[0].lower()
+                if arg0.startswith('r'):
+                    ridx = int(arg0[1:]) - 1
+                else:
+                    ridx = int(arg0) - 1
                 res_list = getattr(self.game, 'resources', [])
                 if not (0 <= ridx < len(res_list)):
                     s = self.game.get_state()
                     res = s.get('resources', [])
-                    lines = ["资源序号无效。用法: take <资源序号>"]
+                    lines = ["资源序号无效。用法: take|t <rN|序号>"]
                     if res:
                         lines.append('当前资源:')
-                        for i, r in enumerate(res, 1):
-                            lines.append(f"  {i}. {r}")
+                        pairs = [(f"r{i}", str(r)) for i, r in enumerate(res, 1)]
+                        lines.extend(self._format_token_list(pairs))
                     else:
                         lines.append('资源区当前为空')
                     return lines, False
@@ -228,20 +302,21 @@ class SimplePvEController:
                 if callable(logs):
                     for line in logs():
                         detail = f"  · {line}"
-                        self._record(detail)
                         self.info.append(detail)
-                out.append(msg)
+                # 不单独打印成功行，避免干扰；展示完整视图
+                out.append(self._render_full_view())
+                return out, False
             except ValueError:
-                out.append('资源序号需为数字')
+                out.append('资源序号需为数字或 rN')
             return out, False
-        if c == 'use':
+        if c in ('use', 'u'):
             if not args:
                 # 缺少物品名：列出背包与用法
                 inv = self.game.player.inventory
-                lines = ["缺少物品名。用法: use <物品名> [mN]", "当前背包:"]
+                lines = ["缺少物品名。用法: use|u <物品名> [mN]", "当前背包:"]
                 if inv.slots:
-                    for i, slot in enumerate(inv.slots, 1):
-                        lines.append(f"  {i}. {slot}")
+                    pairs = [(f"i{i}", str(slot)) for i, slot in enumerate(inv.slots, 1)]
+                    lines.extend(self._format_token_list(pairs))
                     lines.append("提示：装备(如 武器/护甲/盾牌)通常需要指定目标 mN，例如: use 木剑 m1")
                 else:
                     lines.append("  (空)")
@@ -263,20 +338,21 @@ class SimplePvEController:
                         item_obj = slot.item
                         break
                 if item_obj is not None and isinstance(item_obj, (WeaponItem, ArmorItem, ShieldItem)):
-                    # 需要指定随从目标
-                    self._print('该物品为装备，需要指定随从作为目标(mN)。可选:')
+                    # 需要指定队伍目标
+                    self._print(C.label('该物品为装备，需要指定队伍成员作为目标(mN)。可选目标:'))
                     board = self.game.player.board
                     if board:
-                        for i, m in enumerate(board, 1):
-                            self._print(f"  m{i}. {m}")
-                        token = input('选择目标(如 m1，回车取消): ').strip()
+                        pairs = [(f"m{i}", C.friendly(str(m))) for i, m in enumerate(board, 1)]
+                        for line in self._format_token_list(pairs):
+                            self._print(line)
+                        token = input('选择队伍目标(如 m1，回车取消): ').strip()
                         if not token:
                             return ['已取消使用物品'], False
                         tgt = self._resolve_target_token(token)
                         if tgt is None:
-                            return ['无效的目标'], False
+                            return ['无效的队伍目标'], False
                     else:
-                        return ['当前没有可装备目标(随从为空)'], False
+                        return ['当前没有可装备目标(队伍为空)'], False
             # 尝试/记录
             attempt = f"{self.game.player.name} 使用物品 {name}{(' 对 ' + self._format_target(tgt)) if tgt is not None else ''}"
             ok, msg = self.game.player.use_item(name, 1, target=tgt)
@@ -286,21 +362,20 @@ class SimplePvEController:
             if callable(logs):
                 for line in logs():
                     detail = f"  · {line}"
-                    self._record(detail)
                     info_lines.append(detail)
             # 汇总到信息区
             self.info = info_lines
-            out.append(msg)
+            # 不单独打印成功行；展示完整视图
+            out.append(self._render_full_view())
             return out, False
+        # 快捷合成：cN 例如 c1
+        if c.startswith('c') and len(c) > 1 and c[1:].isdigit():
+            idx = int(c[1:])
+            lines = self._craft_by_index(idx)
+            return lines, False
         if c == 'p':
             if not args:
-                # 无参数时：显示手牌与用法提示
-                s = self.game.get_state()
                 out.append('缺少手牌序号。用法: p <手牌序号> [target]')
-                if s.get('hand'):
-                    out.append('当前手牌:')
-                    for i, c in enumerate(s['hand'], 1):
-                        out.append(f"  {i}. {c}")
                 return out, False
             try:
                 idx = int(args[0]) - 1
@@ -318,7 +393,7 @@ class SimplePvEController:
                     target = self._resolve_target_token(target_token)
                 elif requires_target:
                     # 一步式交互：列出并请求目标
-                    self._print('该卡牌需要目标。可选:')
+                    self._print(C.label('该卡牌需要目标。可选目标:'))
                     for line in self._list_play_targets():
                         self._print(line)
                     token = input('选择目标(如 e1 / m1，回车取消): ').strip()
@@ -345,42 +420,69 @@ class SimplePvEController:
                 if callable(logs):
                     for line in logs():
                         detail = f"  · {line}"
-                        self._record(detail)
                         info_lines.append(detail)
                 # 把出牌反馈收纳到信息区
                 self.info = info_lines
-                # 出牌后视为使用一次 s 指令：直接展示所有板块
-                for key in ['0','1','2','3','4','5']:
-                    out.append(self.sections[key]())
+                # 出牌后展示完整视图
+                out.append(self._render_full_view())
             except ValueError:
                 out.append('请输入手牌序号')
             return out, False
         if c == 'a':
             if len(args) < 2:
-                # 引导：列出我方随从、敌人
-                lines = ['缺少目标。用法: a <随从序号> e<敌人序号>', '我方随从:']
+                # 引导：列出我方队伍、敌人（带颜色）
+                lines = [C.warning('缺少目标。用法: a <队伍序号|mN> e<敌人序号>'), C.label('我方队伍:')]
                 board = self.game.player.board
                 if board:
-                    for i, m in enumerate(board, 1):
-                        lines.append(f"  {i}. {m}")
+                    pairs = [(f"m{i}", str(m)) for i, m in enumerate(board, 1)]
+                    lines.extend(self._format_token_list(pairs))
                 else:
                     lines.append('  (无)')
                 enemies = getattr(self.game, 'enemies', None) or getattr(self.game, 'enemy_zone', [])
-                lines.append('敌人:')
+                lines.append(C.label('敌人:'))
                 if enemies:
-                    for i, e in enumerate(enemies, 1):
-                        lines.append(f"  e{i}. {e}")
+                    pairs = [(f"e{i}", str(e)) for i, e in enumerate(enemies, 1)]
+                    lines.extend(self._format_token_list(pairs))
                 else:
                     lines.append('  (无)')
                 # 无 Boss 区
                 return lines, False
             try:
-                m_idx = int(args[0]) - 1
+                # 支持数字或 mN 两种形式
+                first = args[0].lower()
+                if first.startswith('m'):
+                    m_idx = int(first[1:]) - 1
+                else:
+                    m_idx = int(first) - 1
                 tgt = args[1]
+                # healer: 允许 a mA mB 作为对友方的治疗（攻击即治疗）
+                if tgt.startswith('m'):
+                    try:
+                        m_tgt = int(tgt[1:]) - 1
+                        board = self.game.player.board
+                        if not (0 <= m_idx < len(board) and 0 <= m_tgt < len(board)):
+                            return ['友方目标不存在'], False
+                        healer = board[m_idx]
+                        ally = board[m_tgt]
+                        from systems import skills as SK
+                        if not SK.is_healer(healer):
+                            return ['该随从不是治疗者，无法对友方使用攻击治疗'], False
+                        heal_amount = SK.get_heal_amount(healer, getattr(healer, 'attack', 0))
+                        prev = ally.hp
+                        ally.heal(heal_amount)
+                        gain = ally.hp - prev
+                        attempt = f"{self.game.player.name} 的队伍#{m_idx+1} 治疗 我方 m{m_tgt+1}"
+                        self._record(f"{attempt} -> 恢复 {gain}")
+                        self.info = [f"{attempt} -> 恢复 {gain}"]
+                        # 展示完整视图
+                        out.append(self._render_full_view())
+                        return out, False
+                    except ValueError:
+                        return ['友方目标格式 mN (如 m1)'], False
                 if tgt.startswith('e'):
                     try:
                         e_idx = int(tgt[1:]) - 1
-                        attempt = f"{self.game.player.name} 的随从#{m_idx+1} 攻击 敌人 e{e_idx+1}"
+                        attempt = f"{self.game.player.name} 的队伍#{m_idx+1} 攻击 敌人 e{e_idx+1}"
                         _, msg = self.game.attack_enemy(m_idx, e_idx)
                         self._record(f"{attempt} -> {msg}")
                         logs = getattr(self.game, 'pop_logs', None)
@@ -388,27 +490,31 @@ class SimplePvEController:
                         if callable(logs):
                             for line in logs():
                                 detail = f"  · {line}"
-                                self._record(detail)
                                 info_lines.append(detail)
                         self.info = info_lines
-                        out.append(msg)
+                        # 不单独打印成功行；展示完整视图
+                        out.append(self._render_full_view())
+                        return out, False
                     except ValueError:
-                        out.extend(['敌人格式 e数字', '示例: a 1 e1'])
+                        out.extend(['敌人格式 eN (如 e1)', '示例: a m1 e1 或 a 1 e1'])
+                        return out, False
                 elif tgt == 'boss':
                     out.append('当前模式无 Boss 区')
+                    return out, False
                 else:
-                    out.extend(['目标格式: e数字', '示例: a 1 e1'])
+                    out.extend(['目标格式: eN (如 e1)', '示例: a m1 e1 或 a 1 e1'])
+                    return out, False
             except ValueError:
                 # 同样提供引导
-                guide = ['随从序号错误。你的随从:']
+                guide = [C.error('队伍目标错误（应为数字或 mN）。'), C.label('你的队伍:')]
                 board = self.game.player.board
                 if board:
-                    for i, m in enumerate(board, 1):
-                        guide.append(f"  {i}. {m}")
+                    pairs = [(f"m{i}", str(m)) for i, m in enumerate(board, 1)]
+                    guide.extend(self._format_token_list(pairs))
                 else:
                     guide.append('  (无)')
                 out.extend(guide)
-            return out, False
+                return out, False
         if c == 'end':
             self.game.end_turn()
             msg = f"进入回合 {self.game.turn}"
@@ -416,11 +522,116 @@ class SimplePvEController:
             logs = getattr(self.game, 'pop_logs', None)
             if callable(logs):
                 for line in logs():
-                    self._record(f"  · {line}")
+                    # 历史区不再记录详细日志，保持简洁
+                    pass
             out.append(msg)
             return out, False
         out.append('未知指令，h 查看帮助')
         return out, False
+
+    # --- 合成 ---
+    def _recipes(self):
+        # 最小可用配方表（名称 -> 消耗 -> 产出描述/效果）
+        # 仅示例：生命药水(小/大)、解毒药剂
+        return [
+            {
+                'name': '小治疗药水',
+                'cost': {'药草': 1, '空瓶': 1},
+                'result': ('生命药水', 1, '恢复3点生命', 'potion', 3),
+            },
+            {
+                'name': '大治疗药水',
+                'cost': {'药草': 2, '空瓶': 1},
+                'result': ('生命药水', 1, '恢复6点生命', 'potion', 6),
+            },
+            {
+                'name': '解毒药剂',
+                'cost': {'药草': 1, '黏液': 1, '空瓶': 1},
+                'result': ('解毒药剂', 1, '解除中毒', 'potion', 0),
+            },
+        ]
+
+    def _cmd_craft(self, args: list[str]):
+        inv = self.game.player.inventory
+        # 无参数：优先显示当前可合成清单，并提供 cN 提示
+        if not args:
+            crafts = self._craftable_recipes()
+            lines = [C.heading('当前可合成:')]
+            for i, r in enumerate(crafts, 1):
+                cost = ', '.join([f"{k}x{v}" for k, v in r['cost'].items()])
+                lines.append(f"c{i}  {r['name']}  =  {cost}")
+            if not crafts:
+                lines.append('  (暂无)')
+            lines.append('提示: 输入 c1/c2... 直接合成；查看所有: craft list')
+            return lines
+        # list: 显示全部配方
+        if args[0] in ('list', 'ls'):
+            lines = [C.heading('所有配方:')]
+            for r in self._recipes():
+                cost = ', '.join([f"{k}x{v}" for k, v in r['cost'].items()])
+                lines.append(f"- {r['name']} = {cost}")
+            lines.append('用法: craft <名称> 或 craft <索引>')
+            return lines
+        # 数字：作为当前可合成索引
+        if args[0].isdigit():
+            return self._craft_by_index(int(args[0]))
+        # 名称：按名合成
+        name = args[0]
+        recipe = next((r for r in self._recipes() if r['name'] == name), None)
+        if not recipe:
+            return [f"未知配方: {name}", '输入 craft list 查看所有配方']
+        # 校验材料
+        for mat, n in recipe['cost'].items():
+            if not inv.has_item(mat, n):
+                return [f"材料不足: 需要 {mat} x{n}"]
+        return self._apply_recipe(recipe)
+
+    def _apply_recipe(self, recipe: dict) -> list[str]:
+        inv = self.game.player.inventory
+        # 消耗材料
+        for mat, n in recipe['cost'].items():
+            inv.remove_item(mat, n, game=getattr(self.game, 'log', None) and self.game)
+        # 产出
+        from systems.inventory import ConsumableItem
+        res_name, qty, desc, typ, val = recipe['result']
+        if typ == 'potion':
+            def eff(player, target):
+                # 简单：若有目标则治疗目标，否则治疗玩家英雄（简化）
+                if target is not None and hasattr(target, 'heal'):
+                    target.heal(max(1, val))
+                elif hasattr(player, 'heal'):
+                    player.heal(max(1, val))
+            item = ConsumableItem(res_name, desc, max_stack=5, effect=eff)
+            inv.add_item(item, qty, game=self.game)
+            # 信息区与历史，并展示全视图
+            msg = f"合成成功: {res_name} x{qty}"
+            self.info = [msg]
+            self._record(msg)
+            return [self._render_full_view()]
+        return ["配方产出类型未实现"]
+
+    def _craftable_recipes(self) -> list[dict]:
+        inv = self.game.player.inventory
+        crafts = []
+        for r in self._recipes():
+            ok = True
+            for mat, n in r['cost'].items():
+                if not inv.has_item(mat, n):
+                    ok = False
+                    break
+            if ok:
+                crafts.append(r)
+        return crafts
+
+    def _craft_by_index(self, idx: int) -> list[str]:
+        if idx <= 0:
+            return ['索引应为正整数']
+        crafts = self._craftable_recipes()
+        if not crafts:
+            return ['暂无可合成配方']
+        if idx > len(crafts):
+            return [f'索引超出范围(1-{len(crafts)})']
+        return self._apply_recipe(crafts[idx - 1])
 
     # --- 目标解析与列出 ---
     def _resolve_target_token(self, token: str):
@@ -450,21 +661,21 @@ class SimplePvEController:
 
     def _list_play_targets(self):
         lines = []
-        # 敌人
+        # 敌人（带颜色）
         enemies = getattr(self.game, 'enemies', None) or getattr(self.game, 'enemy_zone', [])
         if enemies:
-            lines.append('敌人:')
-            for i, e in enumerate(enemies, 1):
-                lines.append(f"  e{i}. {e}")
+            lines.append(C.label('敌人:'))
+            epairs = [(f"e{i}", str(e)) for i, e in enumerate(enemies, 1)]
+            lines.extend(self._format_token_list(epairs))
     # 场景模式无 Boss
-        # 我方随从
+        # 我方队伍
         board = self.game.player.board
         if board:
-            lines.append('我方随从:')
-            for i, m in enumerate(board, 1):
-                lines.append(f"  m{i}. {m}")
+            lines.append(C.label('我方队伍:'))
+            mpairs = [(f"m{i}", str(m)) for i, m in enumerate(board, 1)]
+            lines.extend(self._format_token_list(mpairs))
         if not lines:
-            lines.append('(当前没有可选目标)')
+            lines.append(C.dim('(当前没有可选目标)'))
         return lines
 
     # --- 辅助格式化 ---
@@ -477,10 +688,10 @@ class SimplePvEController:
             return f"{type(target).__name__}"
 
 
-def start_simple_pve_game():
-    controller = SimplePvEController()
+def start_simple_pve_game(name: str | None = None, scene: str | None = None):
+    controller = SimplePvEController(player_name=name, initial_scene=scene)
     controller.loop()
 
 # 兼容旧入口：主程序调用的多人PvE入口名
-def start_pve_multiplayer_game():
-    start_simple_pve_game()
+def start_pve_multiplayer_game(name: str | None = None, scene: str | None = None):
+    start_simple_pve_game(name=name, scene=scene)

@@ -1,0 +1,13 @@
+为每个场景添加中文标题(title)：
+- main_entrance.json: 地牢入口
+- hallway.json: 走廊
+- fork.json: 岔路口
+- left_room.json: 左侧房间
+- right_room.json: 右侧房间
+- treasure.json: 宝物间
+- forge.json: 熔炉间
+- mid_guard.json: 中段哨所
+- alchemy_lab.json: 炼金室
+- boss_antechamber.json: 前厅
+- boss_room.json: 首领之间
+- exit.json: 出口

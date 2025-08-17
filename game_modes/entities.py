@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 from typing import Callable, Optional
+from ui import colors as C
 
 
 class ResourceItem:
@@ -16,7 +17,7 @@ class ResourceItem:
         self.effect_value = effect_value
 
     def __str__(self) -> str:  # pragma: no cover - 简单显示
-        return f"{self.name}(+{self.effect_value})"
+        return C.resource(f"{self.name}(+{self.effect_value})")
 
 
 class Enemy:
@@ -37,7 +38,7 @@ class Enemy:
         self.can_attack = True
 
     def __str__(self) -> str:  # pragma: no cover
-        return f"{self.name}({self.attack}/{self.hp})"
+        return C.enemy(f"{self.name}({self.attack}/{self.hp})")
 
     def take_damage(self, damage: int) -> bool:
         """返回是否死亡"""
@@ -63,7 +64,7 @@ class Boss:
         return self.hp <= 0
 
     def __str__(self) -> str:  # pragma: no cover
-        return f"{self.name}({self.hp}/{self.max_hp})"
+        return C.enemy(f"{self.name}({self.hp}/{self.max_hp})")
 
 
 # 仅用于类型提示，避免真正引入依赖

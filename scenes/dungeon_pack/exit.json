@@ -1,0 +1,7 @@
+{
+  "title": "出口",
+  "enemies": [
+    {"name": "出口石门", "attack": 0, "hp": 1}
+  ],
+  "resources": []
+}

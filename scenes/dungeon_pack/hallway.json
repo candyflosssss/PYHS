@@ -1,0 +1,12 @@
+{
+  "title": "走廊",
+  "enemies": [
+    {"name": "陷阱·绊线", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "fork.json", "preserve_board": true}},
+    {"name": "老鼠群", "attack": 1, "hp": 3}
+  ],
+  "resources": [
+    {"name": "药草", "type": "material", "value": 2},
+    {"name": "空瓶", "type": "material", "value": 1}
+  ],
+  "on_clear": {"action": "transition", "to": "fork.json", "preserve_board": true}
+}

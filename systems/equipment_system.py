@@ -1,4 +1,5 @@
 from .inventory import EquipmentItem
+from ui import colors as C
 
 class WeaponItem(EquipmentItem):
     """武器装备"""
@@ -11,20 +12,20 @@ class WeaponItem(EquipmentItem):
     
     def __str__(self):
         if self.is_two_handed:
-            return f"{self.name}(双手武器 +{self.attack}攻)"
-        return f"{self.name}(武器 +{self.attack}攻)"
+            return C.resource(f"{self.name}(双手武器 +{self.attack}攻)")
+        return C.resource(f"{self.name}(武器 +{self.attack}攻)")
 
 class ArmorItem(EquipmentItem):
     """防具装备"""
-    def __init__(self, name, description="", durability=100, defense=0, slot_type="armor"):
+    def __init__(self, name, description: str = "", durability: int = 100, defense: int = 0, slot_type: str = "armor"):
         super().__init__(name, description, durability)
         self.attack = 0
         self.defense = defense
         self.slot_type = slot_type
         self.is_two_handed = False
-    
+
     def __str__(self):
-        return f"{self.name}(防具 +{self.defense}防)"
+        return C.resource(f"{self.name}(防具 +{self.defense}防)")
 
 class ShieldItem(EquipmentItem):
     """盾牌装备"""
@@ -37,8 +38,8 @@ class ShieldItem(EquipmentItem):
     
     def __str__(self):
         if self.attack > 0:
-            return f"{self.name}(盾牌 +{self.attack}攻 +{self.defense}防)"
-        return f"{self.name}(盾牌 +{self.defense}防)"
+            return C.resource(f"{self.name}(盾牌 +{self.attack}攻 +{self.defense}防)")
+        return C.resource(f"{self.name}(盾牌 +{self.defense}防)")
 
 
 class EquipmentSystem:

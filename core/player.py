@@ -83,7 +83,7 @@ class Player:
 
     def add_item(self, item, amount=1):
         """添加物品到背包"""
-        return self.inventory.add_item(item, amount)
+        return self.inventory.add_item(item, amount, game=getattr(self, 'game', None))
 
     def get_total_attack(self):
         """获取总攻击力（包括装备加成）"""

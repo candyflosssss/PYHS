@@ -1,0 +1,14 @@
+{
+  "title": "炼金室",
+  "enemies": [
+  {"name": "炼金讲义", "attack": 0, "hp": 1, "drops": [
+      {"name": "配方: 解毒药剂", "type": "recipe", "value": 1},
+      {"name": "配方: 复活药剂(碎页)", "type": "recipe", "value": 1}
+  ], "on_death": {"action": "transition", "to": "boss_antechamber.json", "preserve_board": true}},
+    {"name": "毒雾陷阱", "attack": 2, "hp": 3}
+  ],
+  "resources": [
+    {"name": "药草", "type": "material", "value": 2},
+    {"name": "空瓶", "type": "material", "value": 2}
+  ]
+}

@@ -1,3 +1,5 @@
+from ui import colors as C
+
 class Item:
     """物品基类"""
     def __init__(self, name, item_type="普通", max_stack=1, description=""):
@@ -7,7 +9,7 @@ class Item:
         self.description = description
     
     def __str__(self):
-        return f"{self.name}({self.item_type})"
+        return C.resource(f"{self.name}({self.item_type})")
     
     def __repr__(self):
         return self.__str__()
@@ -80,8 +82,10 @@ class Inventory:
         self.max_slots = max_slots
         self.slots = []  # 存储ItemStack对象的列表
     
-    def add_item(self, item, quantity=1):
-        """添加物品到背包，返回实际添加的数量"""
+    def add_item(self, item, quantity=1, game=None):
+        """添加物品到背包，返回实际添加的数量。
+        若提供 game 且包含 log 方法，则通过 game.log 输出提示，避免直接打印。
+        """
         remaining_quantity = quantity
         
         # 首先尝试添加到现有的堆叠中
@@ -100,15 +104,29 @@ class Inventory:
             remaining_quantity -= stack_size
         
         added_total = quantity - remaining_quantity
+        def _emit(msg: str):
+            try:
+                if game is not None and hasattr(game, 'log'):
+                    game.log(msg)
+                else:
+                    # 控制台回退（开发/测试场景）
+                    print(msg)
+            except Exception:
+                try:
+                    print(msg)
+                except Exception:
+                    pass
         if added_total > 0:
-            print(f"添加到背包: {item.name} x{added_total}")
+            _emit(f"添加到背包: {item.name} x{added_total}")
         if remaining_quantity > 0:
-            print(f"背包空间不足，无法添加: {item.name} x{remaining_quantity}")
+            _emit(f"背包空间不足，无法添加: {item.name} x{remaining_quantity}")
         
         return added_total
     
-    def remove_item(self, item_name, quantity=1):
-        """从背包中移除指定物品，返回实际移除的数量"""
+    def remove_item(self, item_name, quantity=1, game=None):
+        """从背包中移除指定物品，返回实际移除的数量。
+        若提供 game 则通过 game.log 输出提示，避免直接打印。
+        """
         remaining_quantity = quantity
         slots_to_remove = []
         
@@ -129,7 +147,16 @@ class Inventory:
         
         removed_total = quantity - remaining_quantity
         if removed_total > 0:
-            print(f"从背包移除: {item_name} x{removed_total}")
+            try:
+                if game is not None and hasattr(game, 'log'):
+                    game.log(f"从背包移除: {item_name} x{removed_total}")
+                else:
+                    print(f"从背包移除: {item_name} x{removed_total}")
+            except Exception:
+                try:
+                    print(f"从背包移除: {item_name} x{removed_total}")
+                except Exception:
+                    pass
         
         return removed_total
     
@@ -164,10 +191,16 @@ class Inventory:
         """获取空槽位数量"""
         return self.max_slots - len(self.slots)
     
-    def clear(self):
+    def clear(self, game=None):
         """清空背包"""
         self.slots.clear()
-        print("背包已清空")
+        try:
+            if game is not None and hasattr(game, 'log'):
+                game.log("背包已清空")
+            else:
+                print("背包已清空")
+        except Exception:
+            pass
     
     def sort_items(self):
         """按物品类型和名称排序"""

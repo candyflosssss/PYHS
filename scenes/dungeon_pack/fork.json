@@ -1,0 +1,11 @@
+{
+  "title": "岔路口",
+  "enemies": [
+    {"name": "岔路石门(左)", "attack": 0, "hp": 2, "on_death": {"action": "transition", "to": "left_room.json", "preserve_board": true}},
+    {"name": "岔路石门(右)", "attack": 0, "hp": 2, "on_death": {"action": "transition", "to": "right_room.json", "preserve_board": true}},
+    {"name": "封印门(钥)", "attack": 0, "hp": 3, "on_death": {"action": "transition", "to": "boss_antechamber.json", "preserve_board": true}}
+  ],
+  "resources": [
+    {"name": "生锈钥匙(半边)", "type": "key", "value": 1}
+  ]
+}

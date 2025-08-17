@@ -1,0 +1,10 @@
+{
+  "title": "右侧房间",
+  "enemies": [
+    {"name": "史莱姆", "attack": 1, "hp": 7, "drops": [{"name": "黏液", "type": "material", "value": 2}]},
+    {"name": "宝箱(锁)", "attack": 0, "hp": 3, "on_death": {"action": "transition", "to": "treasure.json", "preserve_board": true}}
+  ],
+  "resources": [
+    {"name": "钥匙齿B", "type": "key", "value": 1}
+  ]
+}

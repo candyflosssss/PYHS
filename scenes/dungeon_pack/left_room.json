@@ -1,0 +1,11 @@
+{
+  "title": "左侧房间",
+  "enemies": [
+    {"name": "骷髅卫兵", "attack": 2, "hp": 5, "drops": [{"name": "钥匙齿A", "type": "key", "value": 1}]},
+    {"name": "药剂架(破)", "attack": 0, "hp": 2, "drops": [{"name": "药草", "type": "material", "value": 2}, {"name": "空瓶", "type": "material", "value": 1}]},
+    {"name": "合成台(钥齿)", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "boss_antechamber.json", "preserve_board": true}}
+  ],
+  "resources": [
+    {"name": "配方: 小治疗药水", "type": "recipe", "value": 1}
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "title": "宝物间",
+  "enemies": [
+    {"name": "上锁的宝箱", "attack": 0, "hp": 4, "on_death": {"action": "transition", "to": "forge.json", "preserve_board": true}}
+  ],
+  "resources": [
+    {"name": "空瓶", "type": "material", "value": 2},
+    {"name": "药草", "type": "material", "value": 2}
+  ]
+}

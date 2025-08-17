@@ -1,0 +1,11 @@
+{
+  "title": "中段哨所",
+  "enemies": [
+    {"name": "门闩机关", "attack": 0, "hp": 2, "on_death": {"action": "transition", "to": "alchemy_lab.json", "preserve_board": true}},
+    {"name": "石像鬼", "attack": 3, "hp": 10}
+  ],
+  "resources": [
+    {"name": "药草", "type": "material", "value": 3},
+    {"name": "空瓶", "type": "material", "value": 1}
+  ]
+}
