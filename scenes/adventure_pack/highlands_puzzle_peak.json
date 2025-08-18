@@ -1,0 +1,11 @@
+{
+  "title": "高地谜峰·风阵",
+  "parent": "highlands_camp.json",
+  "enemies": [
+    {"name": "风向桩(东)", "attack": 0, "hp": 1},
+    {"name": "风向桩(西)", "attack": 0, "hp": 1},
+    {"name": "风向桩(南)", "attack": 0, "hp": 1},
+    {"name": "风向桩(北)", "attack": 0, "hp": 1},
+    {"name": "通往龙巢", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "highlands_boss.json", "preserve_board": true}}
+  ]
+}

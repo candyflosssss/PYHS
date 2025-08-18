@@ -1,0 +1,11 @@
+{
+  "title": "幽暗森林·溪流",
+  "parent": "forest_entrance.json",
+  "enemies": [
+    {"name": "湿地史莱姆", "attack": 1, "hp": 3},
+    {"name": "毒蚊群", "attack": 1, "hp": 2}
+  ],
+  "resources": [
+    {"name": "黏液", "type": "material", "value": 1}
+  ]
+}

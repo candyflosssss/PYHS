@@ -1,0 +1,11 @@
+{
+  "title": "幽暗森林·Boss·枯萎之王",
+  "parent": "forest_deep.json",
+  "enemies": [
+    {"name": "枯萎之王", "attack": 3, "hp": 12}
+  ],
+  "resources": [
+    {"name": "古树之心", "type": "material", "value": 3}
+  ],
+  "on_clear": {"action": "transition", "to": "world_map.json", "preserve_board": true}
+}

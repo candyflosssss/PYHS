@@ -1,8 +1,6 @@
-"""
-统一的 ANSI 颜色与配色策略（节制使用）：
-- 通过 NO_COLOR 环境变量禁用颜色。
-- 仅对关键元素上色：标题、友方、敌方、资源/物品、状态摘要。
-- 其余细节（如信息区的后续行、历史）使用淡色。
+"""ANSI 着色与主题
+- 尊重 NO_COLOR；提供 default/mono/high-contrast 主题。
+- 仅对标题/友方/敌方/资源/统计等关键元素上色。
 """
 from __future__ import annotations
 import os
@@ -48,6 +46,10 @@ THEMES = {
         'error': FG_RED,
         'dim': DIM,
         'bold': BOLD,
+    # stats
+    'stat_atk': FG_BRIGHT_YELLOW,
+    'stat_hp': FG_RED,
+    'stat_def': FG_BLUE,
     },
     'mono': {
         'heading': BOLD,     # 仅加粗
@@ -60,6 +62,9 @@ THEMES = {
         'error': '',
         'dim': DIM,
         'bold': BOLD,
+    'stat_atk': '',
+    'stat_hp': '',
+    'stat_def': '',
     },
     'high-contrast': {
         'heading': BOLD + FG_BRIGHT_CYAN,
@@ -72,6 +77,9 @@ THEMES = {
         'error': FG_RED,
         'dim': DIM,
         'bold': BOLD,
+    'stat_atk': FG_BRIGHT_YELLOW,
+    'stat_hp': FG_RED,
+    'stat_def': FG_BLUE,
     },
 }
 
@@ -123,6 +131,16 @@ def dim(s: str) -> str:
 
 def bold(s: str) -> str:
     return _style('bold', s)
+
+# 统计项专用颜色
+def stat_atk(s: str) -> str:
+    return _style('stat_atk', s)
+
+def stat_hp(s: str) -> str:
+    return _style('stat_hp', s)
+
+def stat_def(s: str) -> str:
+    return _style('stat_def', s)
 
 # 去除 ANSI 颜色代码（用于日志等纯文本场景）
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")

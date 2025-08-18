@@ -1,8 +1,6 @@
-"""
-最小可用的单人 PvE 游戏实现（场景版）：
-- 通过 JSON 场景文件初始化敌人区、资源区、己方随从区
-- 不再在回合切换时自动抽牌、生成敌人/资源，也不包含 Boss 与友方英雄生命
-- 易于扩展（可加入技能、掉落、区域事件等）
+"""场景版 PvE 最小引擎
+- 以场景 JSON 驱动：初始化敌人、资源、己方随从。
+- 回合推进仅刷新随从可攻标记；其余按场景/指令驱动。
 """
 
 from __future__ import annotations
@@ -98,6 +96,7 @@ class SimplePvEGame:
         try:
             self._scene_meta = {
                 'on_clear': data.get('on_clear'),
+                'parent': data.get('parent') or data.get('back_to')
             }
         except Exception:
             self._scene_meta = None
@@ -131,10 +130,31 @@ class SimplePvEGame:
                 if m is not None:
                     self.player.board.append(m)
 
+    # 注意：不进行任何自动配装，完全以场景/玩家操作为准
+
         # 使用更友好的标题进行日志
         shown = self.current_scene_title or os.path.basename(scene_path)
         self.log(f"进入场景: {shown}")
         return True
+
+    # --- 导航：返回上一级 ---
+    def can_navigate_back(self) -> bool:
+        try:
+            return bool(self._scene_meta and self._scene_meta.get('parent'))
+        except Exception:
+            return False
+
+    def navigate_back(self) -> bool:
+        """尝试根据场景的 parent/back_to 字段返回上一级。"""
+        try:
+            meta = self._scene_meta or {}
+            parent = meta.get('parent')
+            if not parent:
+                return False
+            # 返回上一层通常需要保留当前随从
+            return bool(self.transition_to_scene(parent, preserve_board=True))
+        except Exception:
+            return False
 
     def transition_to_scene(self, scene_name_or_path: str, preserve_board: bool = False):
         """场景切换：按需保留随从区"""
@@ -367,9 +387,71 @@ class SimplePvEGame:
                 skills = md.get('skills')
                 # 兼容 UGC 字段：透传到卡牌
                 m = NormalCard(atk, hp, name=str(name) if name else None, tags=tags, passive=passive, skills=skills)
+                # 初始装备（来自场景）：支持 equip / equipment 两种字段
+                equip_data = md.get('equip') if 'equip' in md else md.get('equipment')
+                if equip_data:
+                    try:
+                        self._equip_from_json(m, equip_data)
+                    except Exception:
+                        pass
                 return m
             if isinstance(md, (list, tuple)) and len(md) >= 2:
                 return NormalCard(int(md[0]), int(md[1]))
             return None
         except Exception:
             return None
+
+    # --- 场景初始装备解析 ---
+    def _equip_from_json(self, card, equip_data):
+        """将场景 JSON 中定义的装备，装备到指定 card。
+        支持格式：
+        - 列表：[{type:'weapon|armor|shield', name:'...', attack:6, defense:4, slot:'left_hand|right_hand|armor', two_handed:true}]
+        - 对象：{ items:[...同上...] }
+        - 兼容简写：若直接是对象且包含 type/name，则按单件装备处理
+        """
+        try:
+            from systems.equipment_system import WeaponItem, ArmorItem, ShieldItem
+        except Exception:
+            return
+
+        def to_list(data):
+            if isinstance(data, list):
+                return data
+            if isinstance(data, dict):
+                if 'items' in data and isinstance(data['items'], list):
+                    return data['items']
+                # 单件
+                if any(k in data for k in ('type', 'name')):
+                    return [data]
+            return []
+
+        items = to_list(equip_data)
+        for it in items:
+            if not isinstance(it, dict):
+                continue
+            t = str(it.get('type', '') or '').lower()
+            name = it.get('name') or ('装备' if t else None)
+            desc = it.get('desc') or it.get('description') or '场景初始装备'
+            dur = int(it.get('durability', 100))
+            atk = int(it.get('attack', it.get('atk', it.get('value', 0))))
+            dfn = int(it.get('defense', it.get('def', it.get('value', 0))))
+            slot = it.get('slot') or ('armor' if t == 'armor' else ('left_hand' if it.get('two_handed') else 'right_hand'))
+            two = bool(it.get('two_handed', it.get('twoHanded', False)))
+            try:
+                if t == 'weapon':
+                    w = WeaponItem(str(name), str(desc), dur, attack=atk, slot_type=str(slot), is_two_handed=two)
+                    card.equipment.equip(w, game=self)
+                elif t == 'armor':
+                    a = ArmorItem(str(name), str(desc), dur, defense=dfn, slot_type='armor')
+                    card.equipment.equip(a, game=self)
+                elif t == 'shield':
+                    s = ShieldItem(str(name), str(desc), dur, defense=dfn, attack=atk)
+                    card.equipment.equip(s, game=self)
+                else:
+                    # 未知类型忽略
+                    continue
+            except Exception:
+                # 单件失败时继续下一件
+                continue
+
+    #（无自动配装函数）

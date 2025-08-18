@@ -1,0 +1,13 @@
+{
+  "title": "冰封高地·山道",
+  "parent": "world_map.json",
+  "enemies": [
+  {"name": "雪地狼", "attack": 2, "hp": 4},
+  {"name": "寒风之灵", "attack": 1, "hp": 3},
+  {"name": "冰洞入口", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "highlands_cave.json", "preserve_board": true}},
+  {"name": "前往营地", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "highlands_camp.json", "preserve_board": true}}
+  ],
+  "resources": [
+    {"name": "寒冰碎片", "type": "material", "value": 1}
+  ]
+}

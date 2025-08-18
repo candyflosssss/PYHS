@@ -1,0 +1,8 @@
+{
+  "title": "古代遗迹·外门",
+  "parent": "world_map.json",
+  "enemies": [
+    {"name": "石像守卫", "attack": 2, "hp": 5},
+    {"name": "封闭石门", "attack": 0, "hp": 3, "on_death": {"action": "transition", "to": "ruins_hall.json", "preserve_board": true}}
+  ]
+}

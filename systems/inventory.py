@@ -259,7 +259,12 @@ class Inventory:
                 slot.remove(1)
                 if slot.is_empty():
                     self.slots.remove(slot)
-                return True, f"为 {target} 装备了 {item.name}"
+                # 返回包含装备属性的字符串
+                try:
+                    pretty = str(item)
+                except Exception:
+                    pretty = item.name
+                return True, f"为 {target} 装备了 {pretty}"
 
             # 消耗品
             if isinstance(item, ConsumableItem):

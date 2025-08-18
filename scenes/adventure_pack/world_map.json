@@ -1,5 +1,5 @@
 {
-  "title": "地牢入口",
+  "title": "世界地图",
   "board": [
     {"name": "战士·阿朗", "atk": 6, "hp": 14, "tags": ["warrior"],
      "equipment": [{"type":"weapon","name":"双手巨剑","attack":6,"two_handed":true,"slot":"left_hand"}]},
@@ -16,12 +16,15 @@
     {"name": "牧师·茜茜", "atk": 0, "hp": 12, "tags": ["healer"], "skills": [{"name": "治疗", "heal": 4}],
      "equipment": [{"type":"weapon","name":"闪亮法杖","attack":8,"two_handed":true,"slot":"left_hand"}]}
   ],
+  "type": "main",
   "enemies": [
-    {"name": "封闭的木门", "attack": 0, "hp": 3, "on_death": {"action": "transition", "to": "hallway.json", "preserve_board": true}},
-    {"name": "巡逻蝙蝠", "attack": 1, "hp": 2},
-    {"name": "破碎雕像", "attack": 0, "hp": 1, "drops": [{"name": "断裂石块", "type": "material", "value": 1}]}
+    {"name": "通往幽暗森林", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "forest_entrance.json", "preserve_board": true}},
+    {"name": "通往古代遗迹", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "ruins_gate.json", "preserve_board": true}},
+    {"name": "通往冰封高地", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "highlands_path.json", "preserve_board": true}},
+    {"name": "终焉城塞", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "final_boss_citadel.json", "preserve_board": true}}
   ],
   "resources": [
+    {"name": "药草", "type": "material", "value": 1},
     {"name": "木棍"},
     {"name": "药草", "type": "material", "value": 2}
   ]

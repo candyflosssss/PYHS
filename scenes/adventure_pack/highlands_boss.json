@@ -1,0 +1,11 @@
+{
+  "title": "冰封高地·Boss·霜噬巨龙",
+  "parent": "highlands_camp.json",
+  "enemies": [
+    {"name": "霜噬巨龙", "attack": 5, "hp": 20}
+  ],
+  "resources": [
+    {"name": "龙鳞", "type": "material", "value": 4}
+  ],
+  "on_clear": {"action": "transition", "to": "world_map.json", "preserve_board": true}
+}

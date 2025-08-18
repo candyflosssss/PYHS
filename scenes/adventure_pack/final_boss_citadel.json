@@ -1,0 +1,9 @@
+{
+  "title": "终焉城塞·外环",
+  "parent": "world_map.json",
+  "enemies": [
+    {"name": "堕落骑士", "attack": 4, "hp": 10},
+    {"name": "暗影祭司", "attack": 3, "hp": 8}
+  ],
+  "on_clear": {"action": "transition", "to": "final_boss_inner.json", "preserve_board": true}
+}

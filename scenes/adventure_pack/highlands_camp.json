@@ -1,0 +1,12 @@
+{
+  "title": "冰封高地·营地",
+  "parent": "highlands_path.json",
+  "enemies": [
+    {"name": "巡逻冰灵", "attack": 2, "hp": 3},
+    {"name": "碎冰魔像", "attack": 1, "hp": 6}
+  ],
+  "resources": [
+    {"name": "生命药水"}
+  ],
+  "on_clear": {"action": "transition", "to": "highlands_puzzle_peak.json", "preserve_board": true}
+}

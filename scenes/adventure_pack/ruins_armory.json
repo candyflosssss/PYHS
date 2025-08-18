@@ -1,0 +1,11 @@
+{
+  "title": "遗迹军械库",
+  "parent": "ruins_hall.json",
+  "enemies": [
+    {"name": "失落的武器架", "attack": 0, "hp": 1}
+  ],
+  "resources": [
+    {"name": "铁剑"},
+    {"name": "皮甲"}
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "title": "幽暗森林·入口",
+  "parent": "world_map.json",
+  "enemies": [
+  {"name": "荆棘藤蔓", "attack": 0, "hp": 2},
+  {"name": "林间野狼", "attack": 2, "hp": 4},
+  {"name": "小路(空地)", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "forest_clearing.json", "preserve_board": true}},
+  {"name": "小路(溪流)", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "forest_stream.json", "preserve_board": true}},
+  {"name": "深入森林", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "forest_deep.json", "preserve_board": true}}
+  ],
+  "resources": [
+    {"name": "木棍"},
+    {"name": "药草", "type": "material", "value": 1}
+  ]
+}

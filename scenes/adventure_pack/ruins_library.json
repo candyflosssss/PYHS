@@ -1,0 +1,11 @@
+{
+  "title": "遗迹藏书室",
+  "parent": "ruins_hall.json",
+  "enemies": [
+    {"name": "漂浮书页", "attack": 1, "hp": 2},
+    {"name": "守护雕文", "attack": 1, "hp": 3}
+  ],
+  "resources": [
+    {"name": "古卷", "type": "material", "value": 2}
+  ]
+}

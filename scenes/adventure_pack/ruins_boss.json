@@ -1,0 +1,8 @@
+{
+  "title": "古代遗迹·Boss·石王",
+  "parent": "ruins_hall.json",
+  "enemies": [
+    {"name": "石王", "attack": 4, "hp": 16}
+  ],
+  "on_clear": {"action": "transition", "to": "world_map.json", "preserve_board": true}
+}

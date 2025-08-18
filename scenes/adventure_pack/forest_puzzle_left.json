@@ -1,0 +1,11 @@
+{
+  "title": "谜题·石阵左",
+  "parent": "forest_puzzle_glade.json",
+  "enemies": [
+    {"name": "排列石板(Ⅰ)", "attack": 0, "hp": 1},
+    {"name": "排列石板(Ⅱ)", "attack": 0, "hp": 1}
+  ],
+  "resources": [
+    {"name": "苔藓石块", "type": "material", "value": 1}
+  ]
+}

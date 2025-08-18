@@ -1,0 +1,11 @@
+{
+  "title": "幽暗森林·空地",
+  "parent": "forest_entrance.json",
+  "enemies": [
+    {"name": "灰狼", "attack": 2, "hp": 3},
+    {"name": "灰狼首领", "attack": 3, "hp": 5}
+  ],
+  "resources": [
+    {"name": "兽皮", "type": "material", "value": 1}
+  ]
+}

@@ -2,7 +2,38 @@ import sys
 import json
 import os
 
-CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'user_config.json')
+
+def _get_base_dir() -> str:
+    """获取资源基路径。
+    - 普通运行：返回当前文件所在目录
+    - PyInstaller 打包：返回临时解包目录(sys._MEIPASS) 或可执行文件同级目录
+    """
+    try:
+        if getattr(sys, 'frozen', False):  # type: ignore[attr-defined]
+            # 优先使用 _MEIPASS（onefile 解包目录），否则退回到可执行文件所在目录
+            base = getattr(sys, '_MEIPASS', None)  # type: ignore[attr-defined]
+            return base or os.path.dirname(sys.executable)
+    except Exception:
+        pass
+    return os.path.dirname(__file__)
+
+
+def _get_config_path() -> str:
+    """获取配置写入路径。
+    - 普通运行：项目目录 user_config.json
+    - 打包运行：用户目录 %LOCALAPPDATA%\\PYHS\\user_config.json（保证可写）
+    """
+    try:
+        if getattr(sys, 'frozen', False):  # type: ignore[attr-defined]
+            base = os.path.join(os.path.expanduser("~"), "AppData", "Local", "PYHS")
+            os.makedirs(base, exist_ok=True)
+            return os.path.join(base, 'user_config.json')
+    except Exception:
+        pass
+    return os.path.join(_get_base_dir(), 'user_config.json')
+
+
+CONFIG_PATH = _get_config_path()
 
 
 def load_config():
@@ -27,7 +58,7 @@ def save_config(cfg: dict):
 
 
 def list_scenes():
-    scenes_dir = os.path.join(os.path.dirname(__file__), 'scenes')
+    scenes_dir = os.path.join(_get_base_dir(), 'scenes')
     items: list[str] = []
     try:
         for name in os.listdir(scenes_dir):
@@ -42,7 +73,7 @@ def _detect_scene_is_main(scene_file: str) -> bool:
     """检测场景是否为主地图。
     优先以场景 JSON 中的 main/is_main/type=main 为准；否则用文件名包含 default/main 作为兜底。
     """
-    scenes_dir = os.path.join(os.path.dirname(__file__), 'scenes')
+    scenes_dir = os.path.join(_get_base_dir(), 'scenes')
     path = os.path.join(scenes_dir, scene_file)
     try:
         with open(path, 'r', encoding='utf-8') as f:
@@ -71,7 +102,7 @@ def discover_packs():
     """发现地图组：返回 {pack_id: {name, dir, mains, subs}}。
     pack_id 为子目录名；基础包用空字符串 '' 表示。
     """
-    scenes_root = os.path.join(os.path.dirname(__file__), 'scenes')
+    scenes_root = os.path.join(_get_base_dir(), 'scenes')
     packs: dict[str, dict] = {}
     # 基础包（根目录）
     mains, subs = list_scenes_partition()

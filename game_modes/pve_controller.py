@@ -41,7 +41,11 @@ class SimplePvEController:
             "a <队伍序号|mN> e<敌人序号> : 攻击该敌人\n"
             "take|t <rN|序号> : 拾取资源到背包\n"
             "use|u <物品名> [mN] : 使用背包物品(可指定目标队伍成员)\n"
+            "equip|eq <物品名|iN> mN : 为指定队员装备(支持背包序号 iN)\n"
+            "unequip|uneq mN <left|right|armor> : 卸下队员装备到背包\n"
+            "moveeq mN <left|right|armor> mK : 将一名队员的装备直接转移给另一名队员\n"
             "craft|c [list|<索引|名称>] : 合成（背包中会显示可合成，用 cN 快速合成）\n"
+            "back|b : 返回上一级场景(若当前场景定义了返回路径)\n"
             "end : 结束回合\n"
             "i|inv : 查看背包  | h : 帮助  | q : 退出"
         )
@@ -81,7 +85,66 @@ class SimplePvEController:
             pairs: list[tuple[str, str]] = []
             for i, m in enumerate(board, 1):
                 status = C.dim('·已攻') if not getattr(m, 'can_attack', False) else C.dim('·可攻')
-                pairs.append((f"m{i}", f"{str(m)} {status}"))
+                # 计算数值：基础攻、装备攻、总攻、防御、生命
+                try:
+                    base_atk = int(getattr(m, 'base_atk', getattr(m, 'atk', 0)))
+                except Exception:
+                    base_atk = int(getattr(m, 'atk', 0))
+                try:
+                    eq_atk = int(m.equipment.get_total_attack() if hasattr(m, 'equipment') and m.equipment else 0)
+                except Exception:
+                    eq_atk = 0
+                total_atk = base_atk + eq_atk
+                try:
+                    eq_def = int(m.equipment.get_total_defense() if hasattr(m, 'equipment') and m.equipment else 0)
+                except Exception:
+                    eq_def = 0
+                cur_hp = int(getattr(m, 'hp', 0))
+                max_hp = int(getattr(m, 'max_hp', cur_hp))
+                # 名称（带颜色）
+                try:
+                    name = getattr(m, 'display_name', None) or m.__class__.__name__
+                except Exception:
+                    name = '随从'
+                name_colored = C.friendly(str(name))
+                # 装备摘要
+                eq = getattr(m, 'equipment', None)
+                eq_parts = []
+                try:
+                    if eq and getattr(eq, 'left_hand', None):
+                        lh = eq.left_hand
+                        if getattr(lh, 'is_two_handed', False):
+                            bonus = []
+                            if getattr(lh, 'attack', 0): bonus.append(f"+{lh.attack}攻")
+                            if getattr(lh, 'defense', 0): bonus.append(f"+{lh.defense}防")
+                            eq_parts.append(f"双手:{lh.name}({ ' '.join(bonus) })" if bonus else f"双手:{lh.name}")
+                        else:
+                            bonus = []
+                            if getattr(lh, 'attack', 0): bonus.append(f"+{lh.attack}攻")
+                            if getattr(lh, 'defense', 0): bonus.append(f"+{lh.defense}防")
+                            eq_parts.append(f"左:{lh.name}({ ' '.join(bonus) })" if bonus else f"左:{lh.name}")
+                    if eq and getattr(eq, 'right_hand', None):
+                        rh = eq.right_hand
+                        bonus = []
+                        if getattr(rh, 'attack', 0): bonus.append(f"+{rh.attack}攻")
+                        if getattr(rh, 'defense', 0): bonus.append(f"+{rh.defense}防")
+                        eq_parts.append(f"右:{rh.name}({ ' '.join(bonus) })" if bonus else f"右:{rh.name}")
+                    if eq and getattr(eq, 'armor', None):
+                        ar = eq.armor
+                        bonus = []
+                        if getattr(ar, 'attack', 0): bonus.append(f"+{ar.attack}攻")
+                        if getattr(ar, 'defense', 0): bonus.append(f"+{ar.defense}防")
+                        eq_parts.append(f"甲:{ar.name}({ ' '.join(bonus) })" if bonus else f"甲:{ar.name}")
+                except Exception:
+                    pass
+                eq_str = f" [{', '.join(eq_parts)}]" if eq_parts else ""
+                # 组装行：名称 [攻 基+装=总计 | HP 当前/最大 | 防 装] [装备摘要] 状态
+                atk_str = C.stat_atk(f"{total_atk}攻 ({base_atk}+{eq_atk})")
+                hp_str = C.stat_hp(f"{cur_hp}/{max_hp} HP")
+                def_str = C.stat_def(f"{eq_def}防")
+                stat_str = f"[{atk_str} | {hp_str} | {def_str}]"
+                line = f"{name_colored} {stat_str}{eq_str} {status}"
+                pairs.append((f"m{i}", line))
             lines.extend(self._format_token_list(pairs))
         else:
             lines.append("  (空)")
@@ -102,7 +165,21 @@ class SimplePvEController:
         enemies = getattr(self.game, 'enemies', None) or getattr(self.game, 'enemy_zone', [])
         lines = [C.label(f"敌人({len(enemies)}):")]
         if enemies:
-            pairs = [(f"e{i}", str(e)) for i, e in enumerate(enemies, 1)]
+            pairs = []
+            for i, e in enumerate(enemies, 1):
+                try:
+                    name = getattr(e, 'name', f'敌人#{i}')
+                    atk = int(getattr(e, 'attack', 0))
+                    hp = int(getattr(e, 'hp', 0))
+                    mhp = int(getattr(e, 'max_hp', hp))
+                except Exception:
+                    name, atk, hp, mhp = (f'敌人#{i}', 0, 0, 0)
+                atk_str = C.stat_atk(f"{atk}攻")
+                hp_str = C.stat_hp(f"{hp}/{mhp} HP")
+                # 仅给名字上敌人颜色，避免整行染色导致与攻/HP颜色冲突
+                name_colored = C.enemy(str(name))
+                line = f"{name_colored} [{atk_str} | {hp_str}]"
+                pairs.append((f"e{i}", line))
             lines.extend(self._format_token_list(pairs))
         else:
             lines.append("  (无)")
@@ -240,6 +317,245 @@ class SimplePvEController:
         # craft 简化：支持 craft 与 c
         if c in ('craft', 'c'):
             return self._cmd_craft(args), False
+        if c in ('back', 'b'):
+            if getattr(self.game, 'can_navigate_back', None) and self.game.can_navigate_back():
+                ok = self.game.navigate_back()
+                if ok:
+                    self.info = ["已返回上一级", f"  · 当前: {self.game.current_scene_title or self.game.current_scene}"]
+                    out.append(self._render_full_view())
+                    return out, False
+                return ["返回失败"], False
+            return ["当前场景未定义返回路径"], False
+        if c in ('equip', 'eq'):
+            # equip <物品名> mN
+            if len(args) == 0:
+                # 引导：列出可装备物品与可选队伍目标
+                lines = ["用法: equip|eq <物品名|iN> mN", C.label('可装备物品(支持 iN):')]
+                try:
+                    from systems.equipment_system import WeaponItem, ArmorItem, ShieldItem
+                except Exception:
+                    WeaponItem = ArmorItem = ShieldItem = tuple()
+                inv = self.game.player.inventory
+                equip_pairs = []
+                for idx, slot in enumerate(inv.slots, 1):
+                    it = slot.item
+                    if isinstance(it, (WeaponItem, ArmorItem, ShieldItem)):
+                        pretty = str(it)
+                        equip_pairs.append((f"i{idx}", f"{pretty} x{slot.quantity}"))
+                if equip_pairs:
+                    lines.extend(self._format_token_list(equip_pairs))
+                else:
+                    lines.append("  (背包中暂无可装备物品)")
+                lines.append(C.label('可选目标:'))
+                board = self.game.player.board
+                if board:
+                    pairs = [(f"m{i}", str(m)) for i, m in enumerate(board, 1)]
+                    lines.extend(self._format_token_list(pairs))
+                else:
+                    lines.append('  (队伍为空)')
+                return lines, False
+            if len(args) == 1:
+                # 仅提供物品名，交互选择目标
+                name = args[0]
+                self._print(C.label('该指令需要指定队伍成员(mN)作为目标。可选目标:'))
+                board = self.game.player.board
+                if board:
+                    pairs = [(f"m{i}", C.friendly(str(m))) for i, m in enumerate(board, 1)]
+                    for line in self._format_token_list(pairs):
+                        self._print(line)
+                    token = input('选择队伍目标(如 m1，回车取消): ').strip()
+                    if not token:
+                        return ['已取消装备'], False
+                    tgt = self._resolve_target_token(token)
+                    if tgt is None:
+                        return ['无效的队伍目标'], False
+                else:
+                    return ['当前没有可装备目标(队伍为空)'], False
+                # 支持 iN：如果 name 是 iN，按序号取背包物品
+                if name.lower().startswith('i') and name[1:].isdigit():
+                    idx = int(name[1:]) - 1
+                    inv = self.game.player.inventory
+                    if not (0 <= idx < len(inv.slots)):
+                        return ["无效的背包序号"], False
+                    item = inv.slots[idx].item
+                    try:
+                        from systems.equipment_system import WeaponItem, ArmorItem, ShieldItem
+                    except Exception:
+                        WeaponItem = ArmorItem = ShieldItem = tuple()
+                    if not isinstance(item, (WeaponItem, ArmorItem, ShieldItem)):
+                        return ["该物品不可装备"], False
+                    ok = tgt.equipment.equip(item, game=self.game)
+                    info_lines = []
+                    if ok:
+                        # 移除该背包槽位（装备均为不可堆叠）
+                        inv.slots.pop(idx)
+                        pretty = str(item)
+                        info_lines.append(f"为 {self._format_target(tgt)} 装备了 {pretty}")
+                    else:
+                        info_lines.append("装备失败：槽位冲突或条件不满足")
+                    logs = getattr(self.game, 'pop_logs', None)
+                    if callable(logs):
+                        for line in logs():
+                            info_lines.append(f"  · {line}")
+                    self.info = info_lines
+                else:
+                    ok, msg = self.game.player.use_item(name, 1, target=tgt)
+                    info_lines = [msg]
+                    logs = getattr(self.game, 'pop_logs', None)
+                    if callable(logs):
+                        for line in logs():
+                            info_lines.append(f"  · {line}")
+                    self.info = info_lines
+                return [self._render_full_view()], False
+            # 正常路径：item + mN
+            name = args[0]
+            tgt = self._resolve_target_token(args[1])
+            if tgt is None:
+                return ["无效的队伍目标(mN)"], False
+            # 支持 iN + mN
+            if name.lower().startswith('i') and name[1:].isdigit():
+                idx = int(name[1:]) - 1
+                inv = self.game.player.inventory
+                if not (0 <= idx < len(inv.slots)):
+                    return ["无效的背包序号"], False
+                item = inv.slots[idx].item
+                try:
+                    from systems.equipment_system import WeaponItem, ArmorItem, ShieldItem
+                except Exception:
+                    WeaponItem = ArmorItem = ShieldItem = tuple()
+                if not isinstance(item, (WeaponItem, ArmorItem, ShieldItem)):
+                    return ["该物品不可装备"], False
+                ok = tgt.equipment.equip(item, game=self.game)
+                info_lines = []
+                if ok:
+                    inv.slots.pop(idx)
+                    pretty = str(item)
+                    info_lines.append(f"为 {self._format_target(tgt)} 装备了 {pretty}")
+                else:
+                    info_lines.append("装备失败：槽位冲突或条件不满足")
+                logs = getattr(self.game, 'pop_logs', None)
+                if callable(logs):
+                    for line in logs():
+                        info_lines.append(f"  · {line}")
+                self.info = info_lines
+            else:
+                ok, msg = self.game.player.use_item(name, 1, target=tgt)
+                info_lines = [msg]
+                logs = getattr(self.game, 'pop_logs', None)
+                if callable(logs):
+                    for line in logs():
+                        info_lines.append(f"  · {line}")
+                self.info = info_lines
+            return [self._render_full_view()], False
+        if c in ('unequip', 'uneq'):
+            # unequip mN <left|right|armor>
+            if len(args) == 0:
+                # 引导：列出队伍与可卸下槽位
+                lines = ["用法: unequip|uneq mN <left|right|armor>", C.label('当前队伍装备:')]
+                board = self.game.player.board
+                if board:
+                    for i, m in enumerate(board, 1):
+                        eq = getattr(m, 'equipment', None)
+                        parts = []
+                        try:
+                            if eq and getattr(eq, 'left_hand', None):
+                                lh = eq.left_hand
+                                bonus = []
+                                if getattr(lh, 'attack', 0): bonus.append(f"+{lh.attack}攻")
+                                if getattr(lh, 'defense', 0): bonus.append(f"+{lh.defense}防")
+                                if getattr(lh, 'is_two_handed', False):
+                                    parts.append(f"双手:{lh.name}({ ' '.join(bonus) })" if bonus else f"双手:{lh.name}")
+                                else:
+                                    parts.append(f"左:{lh.name}({ ' '.join(bonus) })" if bonus else f"左:{lh.name}")
+                            if eq and getattr(eq, 'right_hand', None):
+                                rh = eq.right_hand
+                                bonus = []
+                                if getattr(rh, 'attack', 0): bonus.append(f"+{rh.attack}攻")
+                                if getattr(rh, 'defense', 0): bonus.append(f"+{rh.defense}防")
+                                parts.append(f"右:{rh.name}({ ' '.join(bonus) })" if bonus else f"右:{rh.name}")
+                            if eq and getattr(eq, 'armor', None):
+                                ar = eq.armor
+                                bonus = []
+                                if getattr(ar, 'attack', 0): bonus.append(f"+{ar.attack}攻")
+                                if getattr(ar, 'defense', 0): bonus.append(f"+{ar.defense}防")
+                                parts.append(f"甲:{ar.name}({ ' '.join(bonus) })" if bonus else f"甲:{ar.name}")
+                        except Exception:
+                            pass
+                        eq_str = (" [" + ", ".join(parts) + "]") if parts else ""
+                        lines.append(f"  m{i}  {str(m)}{eq_str}")
+                else:
+                    lines.append('  (队伍为空)')
+                lines.append(C.dim('提示: 只可卸下已占用的槽位(left/right/armor)'))
+                return lines, False
+            if len(args) == 1:
+                # 提供了目标但未给槽位 -> 交互选择占用槽位
+                tgt = self._resolve_target_token(args[0])
+                if tgt is None:
+                    return ["无效的队伍目标(mN)"], False
+                eq = getattr(tgt, 'equipment', None)
+                if not eq:
+                    return ["该单位没有装备系统"], False
+                choices = []
+                if getattr(eq, 'left_hand', None): choices.append('left')
+                if getattr(eq, 'right_hand', None): choices.append('right')
+                if getattr(eq, 'armor', None): choices.append('armor')
+                if not choices:
+                    return ["该单位当前没有可卸下的装备"], False
+                self._print(C.label(f"可卸下槽位: {', '.join(choices)}"))
+                slot_in = input('选择槽位(left|right|armor，回车取消): ').strip().lower()
+                if not slot_in:
+                    return ['已取消卸下'], False
+                args = [args[0], slot_in]
+            # 正常路径
+            tgt = self._resolve_target_token(args[0])
+            if tgt is None:
+                return ["无效的队伍目标(mN)"], False
+            slot_key = args[1].lower()
+            slot_map = {'left':'left_hand','right':'right_hand','armor':'armor'}
+            slot = slot_map.get(slot_key)
+            if slot is None:
+                return ["槽位需为 left|right|armor"], False
+            eq = getattr(tgt, 'equipment', None)
+            if not eq:
+                return ["该单位没有装备系统"], False
+            removed = eq.unequip(slot)
+            if not removed:
+                return ["该槽位当前为空"], False
+            added = self.game.player.add_item(removed, 1)
+            pretty = str(removed)
+            slot_label = {'left_hand':'left','right_hand':'right','armor':'armor'}.get(slot, slot)
+            self.info = [f"已卸下({slot_label}) {pretty} -> 背包+{added}"]
+            return [self._render_full_view()], False
+        if c == 'moveeq':
+            # moveeq mA <left|right|armor> mB
+            if len(args) < 3:
+                return ["用法: moveeq mA <left|right|armor> mB"], False
+            src = self._resolve_target_token(args[0])
+            dst = self._resolve_target_token(args[2])
+            if src is None or dst is None:
+                return ["无效的队伍目标(mN)"], False
+            slot_key = args[1].lower()
+            slot_map = {'left':'left_hand','right':'right_hand','armor':'armor'}
+            slot = slot_map.get(slot_key)
+            if slot is None:
+                return ["槽位需为 left|right|armor"], False
+            seq = getattr(src, 'equipment', None)
+            deq = getattr(dst, 'equipment', None)
+            if not seq or not deq:
+                return ["源或目标没有装备系统"], False
+            item = seq.unequip(slot)
+            if not item:
+                return ["源槽位为空"], False
+            ok = deq.equip(item, game=self.game)
+            if not ok:
+                # 放回源
+                seq.equip(item, game=self.game)
+                return ["目标槽位冲突，移动失败"], False
+            self.info = [
+                f"已移动装备: {item.name} 从 {self._format_target(args[0])} 到 {self._format_target(args[2])}",
+                f"  · {str(item)}"
+            ]
+            return [self._render_full_view()], False
         if c in ('i', 'inv'):
             out.append(self._section_inventory())
             return out, False

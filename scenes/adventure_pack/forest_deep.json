@@ -1,0 +1,13 @@
+{
+  "title": "幽暗森林·深处",
+  "parent": "forest_entrance.json",
+  "enemies": [
+    {"name": "森林毒蜂", "attack": 1, "hp": 2},
+    {"name": "苔藓巨龟", "attack": 1, "hp": 6}
+  ],
+  "resources": [
+    {"name": "树脂", "type": "material", "value": 1},
+    {"name": "生命药水"}
+  ],
+  "on_clear": {"action": "transition", "to": "forest_puzzle_glade.json", "preserve_board": true}
+}

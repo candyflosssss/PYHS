@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>场景图</title>
+  <style>
+    :root { --bg:#f7f9fb; --ink:#263238; }
+    html, body { height: 100%; margin: 0; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, PingFang SC, Microsoft YaHei, sans-serif; background: var(--bg); color: var(--ink); }
+    h2 { margin: 16px 16px 0; }
+    .legend { display: flex; gap: 16px; align-items: center; margin: 8px 16px; flex-wrap: wrap; }
+    .hint { color: #607D8B; font-size: 12px; margin: 0 16px 8px; }
+    #viewport { position: absolute; inset: 120px 0 0 0; overflow: hidden; background: linear-gradient(90deg, rgba(0,0,0,0.03) 1px, transparent 1px) 0 0/40px 40px, linear-gradient(rgba(0,0,0,0.03) 1px, transparent 1px) 0 0/40px 40px; }
+    #canvas { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+    .edges { position: absolute; left: 0; top: 0; z-index: 0; }
+    .node { position: absolute; width: 280px; height: 84px; border: 1px solid #CFD8DC; border-radius: 10px; padding: 8px 10px 10px; background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,0.06); z-index: 2; }
+    .node .bar { position: absolute; left: 0; top: 0; height: 6px; width: 100%; border-top-left-radius: 10px; border-top-right-radius: 10px; }
+    .node .title { font-weight: 700; margin: 8px 0 4px; font-size: 14px;}
+    .node .meta { color: #607D8B; font-size: 12px; margin-bottom: 2px; }
+    .node .id { color: #B0BEC5; font-size: 11px; word-break: break-all; }
+    .node:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.12); }
+    .pack { position: absolute; border: 1px dashed #CFD8DC; border-radius: 12px; background: rgba(236,239,241,0.35); z-index: 1; }
+    .pack-title { position: sticky; top: 0; background: #ECEFF1; color: #455A64; font-weight: 700; padding: 6px 10px; border-top-left-radius: 12px; border-top-right-radius: 12px; border-bottom: 1px solid #CFD8DC; }
+    .legend .item { display:flex;align-items:center;margin-right:16px }
+  </style>
+</head>
+<body>
+  <h2>场景拓扑图</h2>
+  <div class="legend"><div style="display:flex;align-items:center;margin-right:16px"><span style="display:inline-block;width:14px;height:14px;background:#4FC3F7;margin-right:6px;border-radius:3px"></span>main</div><div style="display:flex;align-items:center;margin-right:16px"><span style="display:inline-block;width:14px;height:14px;background:#9575CD;margin-right:6px;border-radius:3px"></span>hub</div><div style="display:flex;align-items:center;margin-right:16px"><span style="display:inline-block;width:14px;height:14px;background:#FFCA28;margin-right:6px;border-radius:3px"></span>puzzle</div><div style="display:flex;align-items:center;margin-right:16px"><span style="display:inline-block;width:14px;height:14px;background:#A5D6A7;margin-right:6px;border-radius:3px"></span>side</div><div style="display:flex;align-items:center;margin-right:16px"><span style="display:inline-block;width:14px;height:14px;background:#EF5350;margin-right:6px;border-radius:3px"></span>boss</div><div style="display:flex;align-items:center;margin-right:16px"><span style="display:inline-block;width:14px;height:14px;background:#B0BEC5;margin-right:6px;border-radius:3px"></span>normal</div></div>
+  <div class="hint">交互：滚轮缩放，按住鼠标左键拖拽平移。箭头：蓝=机关跳转(go)，绿=清场跳转(clear)，灰虚线=返回(back)。按包分组，包内按层级自左向右排列。</div>
+  <div id="viewport">
+    <div id="canvas" style="width:6360px;height:1456px">
+      <svg width="6360" height="1456" class="edges"><defs><marker id="m_go" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#64B5F6"/></marker><marker id="m_clear" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#81C784"/></marker><marker id="m_back" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#B0BEC5"/></marker></defs><path d="M 2400 162 Q 2520.0 162.0 2520 162" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 760 266 Q 284.0 396.0 80 526" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 760 266 Q 880.0 422.0 880 578" fill="none" stroke="#81C784" stroke-width="2" marker-end="url(#m_clear)" />
+<path d="M 1160 578 Q 684.0 422.0 480 266" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 1160 578 Q 1280.0 656.0 1280 734" fill="none" stroke="#81C784" stroke-width="2" marker-end="url(#m_clear)" />
+<path d="M 1560 734 Q 1084.0 656.0 880 578" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 1560 734 Q 524.0 630.0 80 526" fill="none" stroke="#81C784" stroke-width="2" marker-end="url(#m_clear)" />
+<path d="M 1560 838 Q 804.0 656.0 480 474" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 1560 838 Q 524.0 682.0 80 526" fill="none" stroke="#81C784" stroke-width="2" marker-end="url(#m_clear)" />
+<path d="M 760 370 Q 284.0 500.0 80 630" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 760 474 Q 284.0 552.0 80 630" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 760 474 Q 880.0 474.0 880 474" fill="none" stroke="#81C784" stroke-width="2" marker-end="url(#m_clear)" />
+<path d="M 360 630 Q 160.0 578.0 80 526" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 360 630 Q 480.0 500.0 480 370" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 360 630 Q 480.0 604.0 480 578" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 360 630 Q 480.0 552.0 480 474" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 1160 474 Q 684.0 474.0 480 474" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 1160 474 Q 1280.0 448.0 1280 422" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 1160 474 Q 1280.0 500.0 1280 526" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 1160 474 Q 1280.0 656.0 1280 838" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 1160 474 Q 404.0 552.0 80 630" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 1560 422 Q 1084.0 448.0 880 474" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 1560 526 Q 1084.0 500.0 880 474" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 760 578 Q 284.0 604.0 80 630" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 1960 630 Q 1204.0 656.0 880 682" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 1960 630 Q 644.0 578.0 80 526" fill="none" stroke="#81C784" stroke-width="2" marker-end="url(#m_clear)" />
+<path d="M 1160 682 Q 684.0 682.0 480 682" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 1160 682 Q 1280.0 656.0 1280 630" fill="none" stroke="#81C784" stroke-width="2" marker-end="url(#m_clear)" />
+<path d="M 1160 786 Q 684.0 734.0 480 682" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 760 682 Q 284.0 604.0 80 526" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 760 682 Q 880.0 734.0 880 786" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 760 682 Q 880.0 682.0 880 682" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 1560 630 Q 1084.0 656.0 880 682" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 1560 630 Q 1680.0 630.0 1680 630" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 760 786 Q 284.0 760.0 80 734" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 760 1098 Q 284.0 916.0 80 734" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 760 1098 Q 284.0 812.0 80 526" fill="none" stroke="#81C784" stroke-width="2" marker-end="url(#m_clear)" />
+<path d="M 760 890 Q 284.0 708.0 80 526" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 760 890 Q 284.0 812.0 80 734" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 360 734 Q 480.0 812.0 480 890" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 360 734 Q 480.0 448.0 480 162" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 360 734 Q 480.0 760.0 480 786" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 360 734 Q 480.0 864.0 480 994" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 360 734 Q 480.0 916.0 480 1098" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 760 994 Q 284.0 864.0 80 734" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 760 162 Q 284.0 448.0 80 734" fill="none" stroke="#B0BEC5" stroke-width="2" marker-end="url(#m_back)" stroke-dasharray="6,6" />
+<path d="M 360 526 Q 160.0 578.0 80 630" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 360 526 Q 480.0 708.0 480 890" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 360 526 Q 480.0 604.0 480 682" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 360 526 Q 480.0 396.0 480 266" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 6040 266 Q 4724.0 214.0 4160 162" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 4440 162 Q 4560.0 188.0 4560 214" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 4840 214 Q 4960.0 214.0 4960 214" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 5240 318 Q 5360.0 292.0 5360 266" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 4040 266 Q 4160.0 266.0 4160 266" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 4040 266 Q 4160.0 318.0 4160 370" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 4040 266 Q 4160.0 214.0 4160 162" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 3640 266 Q 3760.0 266.0 3760 266" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 3640 266 Q 3760.0 266.0 3760 266" fill="none" stroke="#81C784" stroke-width="2" marker-end="url(#m_clear)" />
+<path d="M 4440 266 Q 4240.0 214.0 4160 162" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 3240 266 Q 3360.0 266.0 3360 266" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 5640 266 Q 5760.0 266.0 5760 266" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 4440 370 Q 4560.0 344.0 4560 318" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" />
+<path d="M 4840 318 Q 4960.0 318.0 4960 318" fill="none" stroke="#64B5F6" stroke-width="2" marker-end="url(#m_go)" /></svg>
+      <div class="pack" style="left:50px; top:60px; width:1940px; height:1120px"><div class="pack-title">adventure_pack</div></div><div class="pack" style="left:2090px; top:60px; width:740px; height:184px"><div class="pack-title">base</div></div><div class="pack" style="left:2930px; top:60px; width:3140px; height:392px"><div class="pack-title">dungeon_pack</div></div>
+      <div class="node" id="n_default_scene.json" style="left:2120px;top:120px"><div class="bar" style="background:#B0BEC5"></div><div class="title">default_scene.json</div><div class="meta">base · normal</div><div class="id">default_scene.json</div></div>
+<div class="node" id="n_scene_2.json" style="left:2520px;top:120px"><div class="bar" style="background:#B0BEC5"></div><div class="title">scene_2.json</div><div class="meta">base · normal</div><div class="id">scene_2.json</div></div>
+<div class="node" id="n_adventure_pack/final_boss_citadel.json" style="left:480px;top:224px"><div class="bar" style="background:#A5D6A7"></div><div class="title">终焉城塞·外环</div><div class="meta">adventure_pack · side</div><div class="id">adventure_pack/final_boss_citadel.json</div></div>
+<div class="node" id="n_adventure_pack/final_boss_inner.json" style="left:880px;top:536px"><div class="bar" style="background:#A5D6A7"></div><div class="title">终焉城塞·内环</div><div class="meta">adventure_pack · side</div><div class="id">adventure_pack/final_boss_inner.json</div></div>
+<div class="node" id="n_adventure_pack/final_boss_throne.json" style="left:1280px;top:692px"><div class="bar" style="background:#EF5350"></div><div class="title">终焉城塞·Boss·暗影主宰</div><div class="meta">adventure_pack · boss</div><div class="id">adventure_pack/final_boss_throne.json</div></div>
+<div class="node" id="n_adventure_pack/forest_boss.json" style="left:1280px;top:796px"><div class="bar" style="background:#EF5350"></div><div class="title">幽暗森林·Boss·枯萎之王</div><div class="meta">adventure_pack · boss</div><div class="id">adventure_pack/forest_boss.json</div></div>
+<div class="node" id="n_adventure_pack/forest_clearing.json" style="left:480px;top:328px"><div class="bar" style="background:#A5D6A7"></div><div class="title">幽暗森林·空地</div><div class="meta">adventure_pack · side</div><div class="id">adventure_pack/forest_clearing.json</div></div>
+<div class="node" id="n_adventure_pack/forest_deep.json" style="left:480px;top:432px"><div class="bar" style="background:#A5D6A7"></div><div class="title">幽暗森林·深处</div><div class="meta">adventure_pack · side</div><div class="id">adventure_pack/forest_deep.json</div></div>
+<div class="node" id="n_adventure_pack/forest_entrance.json" style="left:80px;top:588px"><div class="bar" style="background:#9575CD"></div><div class="title">幽暗森林·入口</div><div class="meta">adventure_pack · hub</div><div class="id">adventure_pack/forest_entrance.json</div></div>
+<div class="node" id="n_adventure_pack/forest_puzzle_glade.json" style="left:880px;top:432px"><div class="bar" style="background:#FFCA28"></div><div class="title">幽暗森林·谜之空地</div><div class="meta">adventure_pack · puzzle</div><div class="id">adventure_pack/forest_puzzle_glade.json</div></div>
+<div class="node" id="n_adventure_pack/forest_puzzle_left.json" style="left:1280px;top:380px"><div class="bar" style="background:#FFCA28"></div><div class="title">谜题·石阵左</div><div class="meta">adventure_pack · puzzle</div><div class="id">adventure_pack/forest_puzzle_left.json</div></div>
+<div class="node" id="n_adventure_pack/forest_puzzle_right.json" style="left:1280px;top:484px"><div class="bar" style="background:#FFCA28"></div><div class="title">谜题·石阵右</div><div class="meta">adventure_pack · puzzle</div><div class="id">adventure_pack/forest_puzzle_right.json</div></div>
+<div class="node" id="n_adventure_pack/forest_stream.json" style="left:480px;top:536px"><div class="bar" style="background:#A5D6A7"></div><div class="title">幽暗森林·溪流</div><div class="meta">adventure_pack · side</div><div class="id">adventure_pack/forest_stream.json</div></div>
+<div class="node" id="n_adventure_pack/highlands_boss.json" style="left:1680px;top:588px"><div class="bar" style="background:#EF5350"></div><div class="title">冰封高地·Boss·霜噬巨龙</div><div class="meta">adventure_pack · boss</div><div class="id">adventure_pack/highlands_boss.json</div></div>
+<div class="node" id="n_adventure_pack/highlands_camp.json" style="left:880px;top:640px"><div class="bar" style="background:#A5D6A7"></div><div class="title">冰封高地·营地</div><div class="meta">adventure_pack · side</div><div class="id">adventure_pack/highlands_camp.json</div></div>
+<div class="node" id="n_adventure_pack/highlands_cave.json" style="left:880px;top:744px"><div class="bar" style="background:#A5D6A7"></div><div class="title">冰窟</div><div class="meta">adventure_pack · side</div><div class="id">adventure_pack/highlands_cave.json</div></div>
+<div class="node" id="n_adventure_pack/highlands_path.json" style="left:480px;top:640px"><div class="bar" style="background:#A5D6A7"></div><div class="title">冰封高地·山道</div><div class="meta">adventure_pack · side</div><div class="id">adventure_pack/highlands_path.json</div></div>
+<div class="node" id="n_adventure_pack/highlands_puzzle_peak.json" style="left:1280px;top:588px"><div class="bar" style="background:#FFCA28"></div><div class="title">高地谜峰·风阵</div><div class="meta">adventure_pack · puzzle</div><div class="id">adventure_pack/highlands_puzzle_peak.json</div></div>
+<div class="node" id="n_adventure_pack/ruins_armory.json" style="left:480px;top:744px"><div class="bar" style="background:#A5D6A7"></div><div class="title">遗迹军械库</div><div class="meta">adventure_pack · side</div><div class="id">adventure_pack/ruins_armory.json</div></div>
+<div class="node" id="n_adventure_pack/ruins_boss.json" style="left:480px;top:1056px"><div class="bar" style="background:#EF5350"></div><div class="title">古代遗迹·Boss·石王</div><div class="meta">adventure_pack · boss</div><div class="id">adventure_pack/ruins_boss.json</div></div>
+<div class="node" id="n_adventure_pack/ruins_gate.json" style="left:480px;top:848px"><div class="bar" style="background:#A5D6A7"></div><div class="title">古代遗迹·外门</div><div class="meta">adventure_pack · side</div><div class="id">adventure_pack/ruins_gate.json</div></div>
+<div class="node" id="n_adventure_pack/ruins_hall.json" style="left:80px;top:692px"><div class="bar" style="background:#9575CD"></div><div class="title">古代遗迹·前厅</div><div class="meta">adventure_pack · hub</div><div class="id">adventure_pack/ruins_hall.json</div></div>
+<div class="node" id="n_adventure_pack/ruins_library.json" style="left:480px;top:952px"><div class="bar" style="background:#A5D6A7"></div><div class="title">遗迹藏书室</div><div class="meta">adventure_pack · side</div><div class="id">adventure_pack/ruins_library.json</div></div>
+<div class="node" id="n_adventure_pack/ruins_puzzle_room.json" style="left:480px;top:120px"><div class="bar" style="background:#FFCA28"></div><div class="title">遗迹谜间·符文之锁</div><div class="meta">adventure_pack · puzzle</div><div class="id">adventure_pack/ruins_puzzle_room.json</div></div>
+<div class="node" id="n_adventure_pack/world_map.json" style="left:80px;top:484px"><div class="bar" style="background:#4FC3F7"></div><div class="title">世界地图</div><div class="meta">adventure_pack · main</div><div class="id">adventure_pack/world_map.json</div></div>
+<div class="node" id="n_dungeon_pack/alchemy_lab.json" style="left:5760px;top:224px"><div class="bar" style="background:#B0BEC5"></div><div class="title">炼金室</div><div class="meta">dungeon_pack · normal</div><div class="id">dungeon_pack/alchemy_lab.json</div></div>
+<div class="node" id="n_dungeon_pack/boss_antechamber.json" style="left:4160px;top:120px"><div class="bar" style="background:#B0BEC5"></div><div class="title">首领前厅</div><div class="meta">dungeon_pack · normal</div><div class="id">dungeon_pack/boss_antechamber.json</div></div>
+<div class="node" id="n_dungeon_pack/boss_room.json" style="left:4560px;top:172px"><div class="bar" style="background:#B0BEC5"></div><div class="title">首领之间</div><div class="meta">dungeon_pack · normal</div><div class="id">dungeon_pack/boss_room.json</div></div>
+<div class="node" id="n_dungeon_pack/exit.json" style="left:4960px;top:172px"><div class="bar" style="background:#B0BEC5"></div><div class="title">出口</div><div class="meta">dungeon_pack · normal</div><div class="id">dungeon_pack/exit.json</div></div>
+<div class="node" id="n_dungeon_pack/forge.json" style="left:4960px;top:276px"><div class="bar" style="background:#B0BEC5"></div><div class="title">熔炉间</div><div class="meta">dungeon_pack · normal</div><div class="id">dungeon_pack/forge.json</div></div>
+<div class="node" id="n_dungeon_pack/fork.json" style="left:3760px;top:224px"><div class="bar" style="background:#9575CD"></div><div class="title">岔路口</div><div class="meta">dungeon_pack · hub</div><div class="id">dungeon_pack/fork.json</div></div>
+<div class="node" id="n_dungeon_pack/hallway.json" style="left:3360px;top:224px"><div class="bar" style="background:#B0BEC5"></div><div class="title">走廊</div><div class="meta">dungeon_pack · normal</div><div class="id">dungeon_pack/hallway.json</div></div>
+<div class="node" id="n_dungeon_pack/left_room.json" style="left:4160px;top:224px"><div class="bar" style="background:#B0BEC5"></div><div class="title">左侧房间</div><div class="meta">dungeon_pack · normal</div><div class="id">dungeon_pack/left_room.json</div></div>
+<div class="node" id="n_dungeon_pack/main_entrance.json" style="left:2960px;top:224px"><div class="bar" style="background:#B0BEC5"></div><div class="title">地牢入口</div><div class="meta">dungeon_pack · normal</div><div class="id">dungeon_pack/main_entrance.json</div></div>
+<div class="node" id="n_dungeon_pack/mid_guard.json" style="left:5360px;top:224px"><div class="bar" style="background:#B0BEC5"></div><div class="title">中段哨所</div><div class="meta">dungeon_pack · normal</div><div class="id">dungeon_pack/mid_guard.json</div></div>
+<div class="node" id="n_dungeon_pack/right_room.json" style="left:4160px;top:328px"><div class="bar" style="background:#B0BEC5"></div><div class="title">右侧房间</div><div class="meta">dungeon_pack · normal</div><div class="id">dungeon_pack/right_room.json</div></div>
+<div class="node" id="n_dungeon_pack/treasure.json" style="left:4560px;top:276px"><div class="bar" style="background:#B0BEC5"></div><div class="title">宝物间</div><div class="meta">dungeon_pack · normal</div><div class="id">dungeon_pack/treasure.json</div></div>
+    </div>
+  </div>
+  <script>
+  (function(){
+    const viewport = document.getElementById("viewport");
+    const canvas = document.getElementById("canvas");
+    let scale = 0.8, ox = 20, oy = 20;
+    function apply(){ canvas.style.transform = `translate(${ox}px, ${oy}px) scale(${scale})`; }
+    apply();
+    let dragging = false, sx=0, sy=0, sox=0, soy=0;
+    viewport.addEventListener("mousedown", (e)=>{ dragging = true; sx = e.clientX; sy = e.clientY; sox = ox; soy = oy; });
+    window.addEventListener("mouseup", ()=> dragging=false);
+    window.addEventListener("mousemove", (e)=>{ if(!dragging) return; ox = sox + (e.clientX - sx); oy = soy + (e.clientY - sy); apply(); });
+    viewport.addEventListener("wheel", (e)=>{ e.preventDefault(); const prev = scale; scale *= (e.deltaY < 0 ? 1.1 : 0.9); scale = Math.max(0.2, Math.min(2.5, scale));
+      const rect = viewport.getBoundingClientRect(); const cx = e.clientX - rect.left; const cy = e.clientY - rect.top;
+      ox = cx - (cx - ox) * (scale/prev); oy = cy - (cy - oy) * (scale/prev); apply(); }, {passive:false});
+  })();
+  </script>
+</body>
+</html>

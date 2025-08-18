@@ -1,0 +1,8 @@
+{
+  "title": "终焉城塞·Boss·暗影主宰",
+  "parent": "final_boss_inner.json",
+  "enemies": [
+    {"name": "暗影主宰", "attack": 6, "hp": 24}
+  ],
+  "on_clear": {"action": "transition", "to": "world_map.json", "preserve_board": true}
+}

@@ -1,0 +1,11 @@
+{
+  "title": "谜题·石阵右",
+  "parent": "forest_puzzle_glade.json",
+  "enemies": [
+    {"name": "旋转石盘(A)", "attack": 0, "hp": 1},
+    {"name": "旋转石盘(B)", "attack": 0, "hp": 1}
+  ],
+  "resources": [
+    {"name": "石盘碎片", "type": "material", "value": 1}
+  ]
+}

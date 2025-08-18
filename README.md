@@ -19,117 +19,55 @@
 
 ### 📂 **ui/** - 用户界面
 - `game_display.py` - 游戏界面显示系统
-- `inventory_ui.py` - 背包管理界面
+# COMOS - PvE 合作卡牌（简明版）
 
-### 🎯 **主程序**
-- `main.py` - 游戏启动入口(仅PvE模式)
-- `start_game.bat` - Windows快速启动脚本
+面向命令行与 Textual 的轻量级 PvE 合作卡牌原型，支持场景包、装备/背包与基础随从战斗。
 
-**总计**: 9个核心Python文件 (专注PvE合作体验)
-## 🎯 游戏特色
+## 快速开始
 
-### 启动游戏
-```bash
-python main.py
-# 或双击 start_game.bat
-```
+- 运行命令行版：在 `yyy/` 目录下执行 `python main.py`
+- 运行 Textual UI：`python textual_main.py`（需安装 textual 与 rich）
+- Windows 可双击 `start_game.bat`
 
-### PvE合作模式特色
-- **🤝 合作对抗** - 多人协作对抗AI敌人
-- **📦 装备系统** - 武器、防具、盾牌三类装备
-- **🎒 背包管理** - 完整的物品收集和管理
-- **👹 Boss挑战** - 强大的终极Boss等待挑战
-- **💎 资源竞争** - 有限的公共资源需要争夺
+最低环境：Python 3.10+（纯标准库；Textual UI 需额外安装 textual>=0.58）
 
-## 🏟️ PvE游戏系统
+## 目录一览
 
-### 三大区域设计
-1. **🏟️ 玩家区域** - 玩家状态和手牌管理
-2. **👹 敌人区域** - AI敌人和Boss挑战  
-3. **💎 资源区域** - 公共资源池和物品获取
+- `core/`：基础模型（`cards.py` 随从/效果，`player.py` 玩家与战场）
+- `systems/`：系统能力（`inventory.py` 背包物品，`equipment_system.py` 装备槽/加成，`skills.py` 标签/被动/技能判定）
+- `game_modes/`：运行时逻辑（`simple_pve_game.py` 场景版 PvE，`pve_controller.py` CLI 控制器，`entities.py` 与 `pve_content_factory.py` 内容工厂）
+- `ui/`：界面与配色（`colors.py` ANSI 主题，`textual_app.py` Textual 外壳）
+- `scenes/`：场景与关卡包（`default_scene.json` 及子包 `adventure_pack/`、`dungeon_pack/`）
+- `tools/`：工具脚本（`gen_scene_graph.py` 生成场景拓扑图 `scene_graph.html`）
 
-### 游戏机制
-- **回合制** - 玩家轮流行动，保持策略性
-- **多人支持** - 2-8名玩家同时合作游戏
-- **AI敌人** - 智能敌人在每轮后自动行动
-- **装备成长** - 通过战斗获得更好的装备
+## 场景 JSON 速览
 
-### PvE游戏命令
-- `play <编号>` - 出第N张手牌
-- `attack <编号> <目标>` - 用第N张牌攻击目标
-- `bag` - 打开背包管理界面
-- `resource <编号>` - 领取第N个公共资源
-- `info` - 查看游戏状态和玩家信息
-- `end` - 结束当前回合
+基础字段（示例见 `scenes/default_scene.json` 与各包文件）：
+- `title|name`：场景标题
+- `parent|back_to`：返回上级场景（用于导航）
+- `on_clear`: { action: "transition", to: "xxx.json", preserve_board: true }
+- `board`: 我方初始随从数组，元素可为 { atk, hp, name?, tags?, passive?, skills?, equip? }
+- `enemies`: 敌人数组，可为字符串名称或 { name, hp, attack, drops?, on_death? }
+- `resources`: 资源数组，可为字符串或 { name, type: weapon|armor|shield|potion|material, value }
 
-## 🏗️ 系统架构
+装备初始化（board.equip）支持：
+- 列表或对象形式，字段：type, name, attack/defense, slot(left_hand|right_hand|armor), two_handed, desc
 
-### 玩家系统
-- 生命值管理
-- 手牌管理  
-- 背包系统
-- 战场交互
+## 常用命令（CLI 与 Textual 共用）
 
+- `s [0-5]` 查看区块；`h` 帮助；`q` 退出
+- `p <手牌序号> [目标]` 出牌；`a <mN> e<编号>` 攻击敌人
+- `i|inv` 背包；`take <rN|编号>` 拾取资源
+- `use <物品名> [mN]` 使用/装备；`equip <物品名|iN> mN` 装备到目标
+- `unequip mN <left|right|armor>` 卸下；`moveeq mA <slot> mB` 移动装备
+- `c|craft [list|索引|名称]` 合成；`back|b` 返回上级；`end` 结束回合
+
+## 设计要点
+
+- 装备三槽位：left_hand / right_hand / armor；双手武器占用左手并清空右手
+- 攻击与防御：随从 attack = base_atk + 装备加成；伤害至少为 1
+- 技能/被动：通过 `tags/passive/skills` 元数据判定（见 `systems/skills.py`）
+- 场景驱动：清场或敌人 on_death 可触发场景跳转；支持保留随从
+
+更多细节请见各目录下的 README。
 ### 卡牌系统
-- 基础卡牌属性
-- 装备系统集成
-- 特殊效果支持
-
-### 装备系统
-- 三槽位设计：左手、右手、护甲
-- 属性加成计算
-- 装备/卸装管理
-
-## 📦 依赖说明
-
-项目使用纯Python标准库，无需额外安装依赖包。
-
-## 🚀 快速开始
-
-### 方法1: 双击启动 (推荐)
-```bash
-双击 start_game.bat
-```
-
-### 方法2: 命令行启动
-```bash
-python main.py
-```
-
-### 游戏模式选择
-1. **服务器模式** - 创建房间等待其他玩家连接
-2. **客户端模式** - 连接到指定服务器进行对战
-3. **多人游戏模式** - 2-8人同时游戏的新模式
-4. **单机测试模式** - 测试背包和装备系统
-
-### 背包系统使用
-- 游戏中输入 `bag` 打开背包
-- 支持装备武器、护甲给随从
-- 支持卸下装备和使用消耗品
-
-## 🎮 游戏命令参考
-
-### 基础命令
-- `play <编号>` - 出第N张手牌
-- `attack <目标>` - 攻击指定目标 (1-5:对方随从, 0:对方英雄)
-- `bag` - 打开背包管理界面
-- `end` - 结束当前回合
-
-### 多人游戏命令
-- `challenge <玩家名>` - 挑战其他玩家进行PvP
-- `resource <编号>` - 领取第N个公共资源
-- `chat <消息>` - 发送聊天消息
-
-## 📝 整理说明
-
-✅ **项目已完成大规模整理**:
-- 文件数量从40+个精简到15个核心文件
-- 删除了所有重复的显示系统、UI系统版本
-- 移除了大量演示代码和测试文件
-- 整合了分散的文档内容
-- 保留了所有核心游戏功能
-
-- 代码已完成重构优化，去除重复类
-- 背包系统与游戏完全集成
-- 支持单机测试和多人网络对战
-- 所有核心功能已测试验证

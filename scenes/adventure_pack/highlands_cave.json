@@ -1,0 +1,11 @@
+{
+  "title": "冰窟",
+  "parent": "highlands_path.json",
+  "enemies": [
+    {"name": "冰霜蝙蝠", "attack": 1, "hp": 2},
+    {"name": "结晶史莱姆", "attack": 1, "hp": 3}
+  ],
+  "resources": [
+    {"name": "冰晶", "type": "material", "value": 1}
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "title": "终焉城塞·内环",
+  "parent": "final_boss_citadel.json",
+  "enemies": [
+    {"name": "暗影魔像", "attack": 4, "hp": 12}
+  ],
+  "on_clear": {"action": "transition", "to": "final_boss_throne.json", "preserve_board": true}
+}

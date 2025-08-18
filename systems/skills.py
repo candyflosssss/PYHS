@@ -1,7 +1,5 @@
-"""
-技能/被动 插件点（供 UGC 组合）：
-- 通过给单位(Card)附加属性实现：tags(list[str])、passive(dict)、skills(list[dict])
-- 提供判断与共用逻辑：是否治疗型、是否免反击、治疗量获取、是否允许反击等。
+"""技能/被动判定辅助
+- 基于随从的 `tags/passive/skills` 字段提供常用语义判断与数值推导。
 """
 from __future__ import annotations
 from typing import Any, Dict, List, Optional

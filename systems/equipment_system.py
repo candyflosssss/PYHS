@@ -59,37 +59,87 @@ class EquipmentSystem:
             print(text)
 
     def equip(self, equipment, game=None):
-        """装备物品（可选传入 game，用于统一日志输出）"""
+        """装备物品（可选传入 game，用于统一日志输出）
+        - 如目标槽位已有装备，会自动将被替换的装备退回玩家背包（若可获取到 game.player）。
+        - 双手武器会清空并返还双手的原有装备。
+        """
+        def return_item(it):
+            if not it:
+                return
+            try:
+                player = getattr(game, 'player', None)
+                if player is not None and hasattr(player, 'add_item'):
+                    player.add_item(it, 1)
+                else:
+                    # 退化为打印
+                    self._log(game, f"已移除装备: {it}")
+            except Exception:
+                try:
+                    self._log(game, f"已移除装备: {it}")
+                except Exception:
+                    pass
+
+        # 盔甲
         if equipment.slot_type == "armor":
+            if self.armor is not None:
+                self._log(game, f"替换盔甲: {self.armor} -> {equipment}")
+                return_item(self.armor)
             self.armor = equipment
             self._log(game, f"装备盔甲: {equipment}")
-        elif equipment.is_two_handed:
-            # 双手武器，清空双手槽位
+            return True
+
+        # 双手武器
+        if equipment.is_two_handed:
+            # 清理双手，并返还
+            if self.left_hand is not None:
+                self._log(game, f"移除左手: {self.left_hand}")
+                return_item(self.left_hand)
+            if self.right_hand is not None:
+                self._log(game, f"移除右手: {self.right_hand}")
+                return_item(self.right_hand)
             self.left_hand = equipment
             self.right_hand = None
             self._log(game, f"装备双手武器: {equipment}")
-        elif equipment.slot_type == "left_hand":
+            return True
+
+        # 单手左手武器
+        if equipment.slot_type == "left_hand":
             if self.left_hand and self.left_hand.is_two_handed:
-                self._log(game, "无法装备，左手持有双手武器")
+                self._log(game, "无法装备，左手当前为双手武器")
                 return False
+            if self.left_hand is not None:
+                self._log(game, f"替换左手: {self.left_hand} -> {equipment}")
+                return_item(self.left_hand)
             self.left_hand = equipment
             self._log(game, f"装备左手: {equipment}")
-        elif equipment.slot_type == "right_hand":
+            return True
+
+        # 单手右手武器
+        if equipment.slot_type == "right_hand":
             if self.left_hand and self.left_hand.is_two_handed:
-                self._log(game, "无法装备，持有双手武器")
+                self._log(game, "无法装备，当前持有双手武器")
                 return False
+            if self.right_hand is not None:
+                self._log(game, f"替换右手: {self.right_hand} -> {equipment}")
+                return_item(self.right_hand)
             self.right_hand = equipment
             self._log(game, f"装备右手: {equipment}")
-        return True
+            return True
+
+        # 未知槽位
+        self._log(game, f"无法装备(未知槽位): {equipment}")
+        return False
     
     def unequip(self, slot):
-        """卸下装备"""
+        """卸下装备，返回被卸下的物品(或 None)"""
+        removed = None
         if slot == "left_hand":
-            self.left_hand = None
+            removed, self.left_hand = self.left_hand, None
         elif slot == "right_hand":
-            self.right_hand = None
+            removed, self.right_hand = self.right_hand, None
         elif slot == "armor":
-            self.armor = None
+            removed, self.armor = self.armor, None
+        return removed
     
     def get_total_attack(self):
         """获取总攻击力"""
@@ -114,7 +164,10 @@ class EquipmentSystem:
     def __str__(self):
         items = []
         if self.left_hand:
-            items.append(f"左手:{self.left_hand.name}")
+            if getattr(self.left_hand, 'is_two_handed', False):
+                items.append(f"双手:{self.left_hand.name}")
+            else:
+                items.append(f"左手:{self.left_hand.name}")
         if self.right_hand:
             items.append(f"右手:{self.right_hand.name}")
         if self.armor:

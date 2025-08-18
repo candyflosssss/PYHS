@@ -1,0 +1,5 @@
+{
+  "name": "远征大陆",
+  "mains": ["world_map.json"],
+  "description": "一个包含野外、遗迹、谜题与三位Boss的长篇冒险。"
+}

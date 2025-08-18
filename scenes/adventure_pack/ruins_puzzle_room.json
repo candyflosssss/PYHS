@@ -1,0 +1,12 @@
+{
+  "title": "遗迹谜间·符文之锁",
+  "parent": "ruins_hall.json",
+  "enemies": [
+    {"name": "符文石(α)", "attack": 0, "hp": 1},
+    {"name": "符文石(β)", "attack": 0, "hp": 1},
+    {"name": "符文石(γ)", "attack": 0, "hp": 1}
+  ],
+  "resources": [
+    {"name": "符文粉末", "type": "material", "value": 1}
+  ]
+}

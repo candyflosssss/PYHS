@@ -1,0 +1,10 @@
+{
+  "title": "古代遗迹·前厅",
+  "parent": "ruins_gate.json",
+  "enemies": [
+    {"name": "石墙机关(上)", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "ruins_puzzle_room.json", "preserve_board": true}},
+  {"name": "石墙机关(下)", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "ruins_armory.json", "preserve_board": true}},
+  {"name": "裂缝(藏书室)", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "ruins_library.json", "preserve_board": true}},
+  {"name": "石门(首领)", "attack": 0, "hp": 2, "on_death": {"action": "transition", "to": "ruins_boss.json", "preserve_board": true}}
+  ]
+}

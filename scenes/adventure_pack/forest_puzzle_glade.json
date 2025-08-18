@@ -1,0 +1,10 @@
+{
+  "title": "幽暗森林·谜之空地",
+  "parent": "forest_deep.json",
+  "enemies": [
+    {"name": "石阵机关(左)", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "forest_puzzle_left.json", "preserve_board": true}},
+    {"name": "石阵机关(右)", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "forest_puzzle_right.json", "preserve_board": true}},
+    {"name": "通向枯萎之庭", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "forest_boss.json", "preserve_board": true}},
+    {"name": "返回入口", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "forest_entrance.json", "preserve_board": true}}
+  ]
+}
