@@ -58,33 +58,37 @@ def save_config(cfg: dict):
 
 
 def list_scenes():
-    scenes_dir = os.path.join(_get_base_dir(), 'scenes')
-    items: list[str] = []
-    try:
-        for name in os.listdir(scenes_dir):
-            if name.lower().endswith('.json'):
-                items.append(name)
-    except Exception:
-        pass
-    return sorted(items)
+    """列出基础包(根目录)下的场景文件（聚合多个可能的根：scenes 与 yyy/scenes）。"""
+    roots = _get_scene_roots()
+    seen = set()
+    for root in roots:
+        try:
+            for name in os.listdir(root):
+                if name.lower().endswith('.json'):
+                    seen.add(name)
+        except Exception:
+            continue
+    return sorted(seen)
 
 
 def _detect_scene_is_main(scene_file: str) -> bool:
     """检测场景是否为主地图。
     优先以场景 JSON 中的 main/is_main/type=main 为准；否则用文件名包含 default/main 作为兜底。
     """
-    scenes_dir = os.path.join(_get_base_dir(), 'scenes')
-    path = os.path.join(scenes_dir, scene_file)
-    try:
-        with open(path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            if isinstance(data, dict):
-                if bool(data.get('main')) or bool(data.get('is_main')):
-                    return True
-                if str(data.get('type', '')).lower() == 'main':
-                    return True
-    except Exception:
-        pass
+    # 在所有已知根里定位该文件并读取元数据
+    roots = _get_scene_roots()
+    for base in roots:
+        path = os.path.join(base, scene_file)
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    if bool(data.get('main')) or bool(data.get('is_main')):
+                        return True
+                    if str(data.get('type', '')).lower() == 'main':
+                        return True
+        except Exception:
+            continue
     low = scene_file.lower()
     if 'default' in low or 'main' in low:
         return True
@@ -92,72 +96,105 @@ def _detect_scene_is_main(scene_file: str) -> bool:
 
 
 def list_scenes_partition():
+    """把基础包中的场景分为主地图与子地图。"""
     mains: list[str] = []
     subs: list[str] = []
     for s in list_scenes():
         (mains if _detect_scene_is_main(s) else subs).append(s)
     return mains, subs
 
+def _get_scene_roots() -> list[str]:
+    """返回可能存在的场景根目录列表，按优先顺序：
+    1) <base>/scenes
+    2) <base>/yyy/scenes (GUI 打包时使用)
+    过滤不存在的路径。
+    """
+    base = _get_base_dir()
+    candidates = [
+        os.path.join(base, 'scenes'),
+        os.path.join(base, 'yyy', 'scenes'),
+    ]
+    roots: list[str] = []
+    for p in candidates:
+        if os.path.isdir(p) and p not in roots:
+            roots.append(p)
+    return roots
+
+
 def discover_packs():
     """发现地图组：返回 {pack_id: {name, dir, mains, subs}}。
     pack_id 为子目录名；基础包用空字符串 '' 表示。
+    同时兼容 scenes 与 yyy/scenes 两种根路径。
     """
-    scenes_root = os.path.join(_get_base_dir(), 'scenes')
+    roots = _get_scene_roots()
     packs: dict[str, dict] = {}
-    # 基础包（根目录）
+    # 基础包（根目录聚合）
     mains, subs = list_scenes_partition()
+    # 选一个存在的根目录作为基础包的 dir 展示用（优先第一个）
+    base_dir = roots[0] if roots else os.path.join(_get_base_dir(), 'scenes')
     packs[''] = {
         'name': '基础',
-        'dir': scenes_root,
+        'dir': base_dir,
         'mains': mains,
         'subs': subs,
     }
-    # 子目录包
-    try:
-        for entry in os.listdir(scenes_root):
-            p = os.path.join(scenes_root, entry)
-            if not os.path.isdir(p):
-                continue
-            # 收集该包内所有 json
-            scenes: list[str] = []
-            mains2: list[str] = []
-            subs2: list[str] = []
-            pack_meta = {}
-            meta_path = os.path.join(p, 'pack.json')
+    # 子目录包：聚合所有根下的包名，并合并场景
+    pack_names = set()
+    for r in roots:
+        try:
+            for entry in os.listdir(r):
+                p = os.path.join(r, entry)
+                if os.path.isdir(p):
+                    pack_names.add(entry)
+        except Exception:
+            continue
+    for entry in sorted(pack_names):
+        # 聚合该包在所有根下的内容
+        scenes_set = set()
+        pack_meta = {}
+        pack_dirs = [os.path.join(r, entry) for r in roots if os.path.isdir(os.path.join(r, entry))]
+        # 读取第一个可用的 pack.json 作为名称信息
+        for pd in pack_dirs:
+            meta_path = os.path.join(pd, 'pack.json')
             try:
                 if os.path.exists(meta_path):
                     with open(meta_path, 'r', encoding='utf-8') as f:
                         pack_meta = json.load(f) or {}
+                        break
             except Exception:
-                pack_meta = {}
+                continue
+        # 收集场景文件名（去重）
+        for pd in pack_dirs:
             try:
-                for name in os.listdir(p):
+                for name in os.listdir(pd):
                     if name.lower().endswith('.json') and name != 'pack.json':
-                        scenes.append(name)
+                        scenes_set.add(name)
             except Exception:
-                pass
-            # 主地图：pack.json 指定 mains 优先；否则按场景规则判定
-            mains_cfg = pack_meta.get('mains') if isinstance(pack_meta, dict) else None
-            if isinstance(mains_cfg, list) and mains_cfg:
-                for s in scenes:
-                    if s in mains_cfg:
-                        mains2.append(s)
-                    else:
-                        subs2.append(s)
-            else:
-                for s in scenes:
-                    if _detect_scene_is_main(os.path.join(entry, s)) or _detect_scene_is_main(s):
-                        mains2.append(s)
-                    else:
-                        subs2.append(s)
-            packs[entry] = {
-                'name': pack_meta.get('name', entry) if isinstance(pack_meta, dict) else entry,
-                'dir': p,
-                'mains': sorted(mains2),
-                'subs': sorted(subs2),
-            }
-    except Exception:
-        pass
+                continue
+        scenes = sorted(scenes_set)
+        mains2: list[str] = []
+        subs2: list[str] = []
+        # 主地图：pack.json 指定 mains 优先；否则按场景规则判定
+        mains_cfg = pack_meta.get('mains') if isinstance(pack_meta, dict) else None
+        if isinstance(mains_cfg, list) and mains_cfg:
+            for s in scenes:
+                if s in mains_cfg:
+                    mains2.append(s)
+                else:
+                    subs2.append(s)
+        else:
+            for s in scenes:
+                # 传入 "entry/s" 以便 _detect 在多根下定位
+                if _detect_scene_is_main(os.path.join(entry, s)) or _detect_scene_is_main(s):
+                    mains2.append(s)
+                else:
+                    subs2.append(s)
+        packs[entry] = {
+            'name': pack_meta.get('name', entry) if isinstance(pack_meta, dict) else entry,
+            'dir': pack_dirs[0] if pack_dirs else os.path.join(base_dir, entry),
+            'mains': mains2,
+            'subs': subs2,
+        }
     return packs
 
 def _pick_default_main(mains: list[str]) -> str:

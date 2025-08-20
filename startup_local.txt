@@ -1,0 +1,6 @@
+pid: 10752
+cwd: C:\Users\MoSaki\PYHS\yyy
+executable: C:\Users\MoSaki\PYHS\yyy\venv\scripts\python.exe
+argv: ['tk_main.py']
+frozen: False
+_MEIPASS: None

@@ -71,3 +71,18 @@
 
 更多细节请见各目录下的 README。
 ### 卡牌系统
+
+## 打包与配置
+
+- 打包脚本：`yyy/build_exe.bat` 会生成：
+	- CLI：`yyy/dist/COMOS-CLI.exe`
+	- GUI：`yyy/dist/COMOS-GUI.exe`
+- 场景资源会随 GUI/CLI 一起打包到 `yyy/scenes`，以匹配运行时路径。
+- 用户配置保存位置：
+	- 源码运行：`yyy/user_config.json`
+	- 打包运行：`%LOCALAPPDATA%\PYHS\user_config.json`
+
+## 展示场景（Showcase）
+
+- 新增 `scenes/test_showcase.json`，涵盖：多职业随从（含初始装备）、常见敌人（掉落装备/材料）、资源区多类型（药水/材料/装备）、清场后跳转回默认场景。
+- 在 Tk GUI 主菜单：选择地图组“基础”，选主地图 `test_showcase.json` 启动即可。

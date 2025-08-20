@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import List
 import json
 import os
+import sys
 from game_modes.entities import Enemy, ResourceItem
 from game_modes.pve_content_factory import EnemyFactory, ResourceFactory
 from core.player import Player
@@ -20,12 +21,40 @@ class SimplePvEGame:
         self.player = Player(player_name, is_me=True, game=self)
         self.turn = 1
         self.running = True
-        self.enemies = []
-        self.resources = []
+        self.enemies: list = []
+        self.resources: list = []
         # 日志缓冲（控制器会读取并清空）
-        self._log_buffer = []
-        # 场景管理
-        self._scene_base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scenes'))
+        self._log_buffer: list[str] = []
+        # 场景管理：兼容源码与打包路径
+        # 优先使用 <pkg>/scenes (源码运行常见)，其次使用 <pkg父>/scenes（GUI 打包可能放到根 scenes）
+        pkg_base = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        # 考虑多种运行时布局：优先尝试 PyInstaller onefile 解包目录 (sys._MEIPASS)、
+        # 然后是源码常见目录 <pkg>/scenes 与 父目录的 scenes
+        candidates = []
+        try:
+            if getattr(sys, 'frozen', False):
+                meipass = getattr(sys, '_MEIPASS', None)
+                if meipass:
+                    candidates.append(os.path.join(meipass, 'scenes'))
+                    candidates.append(os.path.join(meipass, 'yyy', 'scenes'))
+        except Exception:
+            pass
+        # 源码布局备选
+        candidates.append(os.path.join(pkg_base, 'scenes'))
+        candidates.append(os.path.join(os.path.dirname(pkg_base), 'scenes'))
+        # 选第一个存在的，否则退回到第一个候选作为默认
+        scene_base = None
+        for p in candidates:
+            try:
+                if os.path.isdir(p):
+                    scene_base = p
+                    break
+            except Exception:
+                continue
+        if not scene_base:
+            scene_base = candidates[0]
+        self._scene_base_dir = os.path.abspath(scene_base)
+        # 初始化其它实例字段
         self.current_scene = None
         self.current_scene_title = None
         self._scene_meta = None  # 保存本场景的一些行为配置（如 on_clear）
@@ -34,6 +63,38 @@ class SimplePvEGame:
         self.players = {self.player.name: self.player}
         # 初始化默认场景
         self._init_board()
+
+    # 调试用：返回内部候选场景根（按优先级）
+    def _debug_scene_candidates(self) -> list[str]:
+        pkg_base = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        candidates = []
+        try:
+            if getattr(sys, 'frozen', False):
+                meipass = getattr(sys, '_MEIPASS', None)
+                if meipass:
+                    candidates.append(os.path.join(meipass, 'scenes'))
+                    candidates.append(os.path.join(meipass, 'yyy', 'scenes'))
+        except Exception:
+            pass
+        candidates.append(os.path.join(pkg_base, 'scenes'))
+        candidates.append(os.path.join(os.path.dirname(pkg_base), 'scenes'))
+        return [os.path.abspath(p) for p in candidates]
+
+    def _write_scene_debug(self, lines: list[str]):
+        """Append diagnostic lines to %LOCALAPPDATA%\PYHS\scene_debug.txt (safe, no raise)."""
+        try:
+            base = os.path.join(os.path.expanduser('~'), 'AppData', 'Local', 'PYHS')
+            os.makedirs(base, exist_ok=True)
+            path = os.path.join(base, 'scene_debug.txt')
+            from datetime import datetime
+            with open(path, 'a', encoding='utf-8') as f:
+                f.write(f"--- {datetime.now().isoformat()} ---\n")
+                for l in lines:
+                    f.write(str(l) + "\n")
+                f.write("\n")
+        except Exception:
+            # swallow errors - debugging should not break game
+            pass
 
 
     # --- 初始化与状态 ---
@@ -78,7 +139,18 @@ class SimplePvEGame:
             with open(scene_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
         except Exception as e:
-            self.log(f"读取场景失败: {e}")
+            msg = f"读取场景失败: {e}"
+            self.log(msg)
+            try:
+                tries = [os.path.abspath(scene_path)]
+                tries.extend(self._debug_scene_candidates())
+            except Exception:
+                tries = [scene_path]
+            dbg = [msg, f"scene_base: {getattr(self, '_scene_base_dir', '?')}", "attempts:"] + tries
+            try:
+                self._write_scene_debug(dbg)
+            except Exception:
+                pass
             return False
 
         # 记录当前场景

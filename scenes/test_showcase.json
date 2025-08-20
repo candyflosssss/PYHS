@@ -1,0 +1,34 @@
+{
+  "title": "展示场景（Showcase）",
+  "type": "main",
+  "board": [
+    {"name": "战士", "atk": 2, "hp": 6, "tags": ["近战"],
+     "equip": {"items": [
+       {"type": "weapon", "name": "钢剑", "attack": 4, "slot": "right_hand"},
+       {"type": "shield", "name": "铁盾", "defense": 3}
+     ]}},
+    {"name": "游侠", "atk": 3, "hp": 4, "tags": ["远程"],
+     "equip": {"items": [
+       {"type": "weapon", "name": "巨弓", "attack": 5, "slot": "left_hand", "two_handed": true}
+     ]}},
+    {"name": "牧师", "atk": 1, "hp": 5, "tags": ["辅助"],
+     "passive": ["治疗光环"]}
+  ],
+  "enemies": [
+    {"name": "哥布林", "hp": 4, "attack": 1, "drops": ["木剑", {"name": "药草", "type": "material", "value": 1}]},
+    {"name": "骷髅", "hp": 5, "attack": 2, "drops": ["皮甲"]},
+    {"name": "兽人", "hp": 7, "attack": 3, "drops": [
+      {"name": "空瓶", "type": "material", "value": 1},
+      {"name": "药草", "type": "material", "value": 1}
+    ]}
+  ],
+  "resources": [
+    {"name": "生命药水", "type": "potion", "value": 3},
+    {"name": "法力药水", "type": "potion", "value": 3},
+    {"name": "铁剑", "type": "weapon", "value": 4},
+    {"name": "皮甲", "type": "armor", "value": 2},
+    {"name": "药草", "type": "material", "value": 1},
+    {"name": "空瓶", "type": "material", "value": 1}
+  ],
+  "on_clear": { "action": "transition", "to": "default_scene.json", "preserve_board": true }
+}

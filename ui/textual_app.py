@@ -71,13 +71,25 @@ class GameTextualApp(App):
     # 让按钮尽量贴文字宽度
     # 主体两栏
     .main { height: 1fr; }
-    .col { padding: 1; align-horizontal: left; }
+    .col { padding: 0; align-horizontal: left; }
     # 标题
     .sec_title { text-style: bold; color: $accent; padding: 0 0; }
-    .hint { color: $text-muted; padding: 0 1; }
+    .hint { color: $text-muted; padding: 0 0; }
     # 按钮（紧凑、贴文字）
-    .item { margin: 0; padding: 0 0; min-height: 1; height: auto; width: auto; }
-    .tight { padding: 0 0; width: auto; }
+    .item { margin: 0; padding: 0 0; min-height: 1; height: 1; width: auto; border: none; }
+    .tight { padding: 0 0; margin: 0; width: auto; height: 1; }
+    # 收紧整体行距
+    # 尽量让 Board 中的控件贴合文本高度
+    # 不用全局 Button 以免影响主菜单按钮
+    #board { padding: 0; margin: 0; }
+    #right { padding: 0; }
+    #topbar, #hintbar { padding: 0; }
+    #leftcol { layout: vertical; }
+    #board { height: 1fr; padding: 0; margin: 0; }
+    #char_panel_container { height: auto; padding: 0; margin: 0; }
+    #board Button { padding: 0 0; margin: 0; min-height: 1; height: 1; }
+    #board Label { padding: 0 0; margin: 0; }
+    #info, #logs { padding: 0; }
     # 语义色
     .friendly { color: $success; }
     .enemy { color: $warning; }
@@ -85,6 +97,20 @@ class GameTextualApp(App):
     .equip { color: $text; }
     .highlight { border: round $warning; }
     .selected { border: heavy $success; }
+
+    /* 顶部栏/提示栏强制单行高度，避免过多留白 */
+    #topbar { height: 1; min-height: 1; padding: 0; margin: 0; }
+    #topbar Label { height: 1; min-height: 1; padding: 0; margin: 0; }
+    #topbar Button { height: 1; min-height: 1; padding: 0; margin: 0; }
+    #hintbar { height: 1; min-height: 1; padding: 0; margin: 0; }
+    #hintbar Label { height: 1; min-height: 1; padding: 0; margin: 0; }
+
+    /* 角色面板（左下角，放在 Board 末尾） */
+    #char_panel { border: round $accent; padding: 0 0; margin: 0 0; width: auto; }
+    #char_header { padding: 0 0; margin: 0 0; height: 1; min-height: 1; }
+    #char_stats { padding: 0 0; margin: 0 0; height: 1; min-height: 1; }
+    #slots { padding: 0 0; margin: 0 0; }
+    .slot { padding: 0 0; margin: 0 1; height: 1; min-height: 1; width: auto; }
     """
 
     BINDINGS = [
@@ -105,21 +131,22 @@ class GameTextualApp(App):
         self.sel_minion: Optional[int] = None
         self._epoch = 0
         # UI 部件
-        self.header_title: Optional[Label] = None
-        self.turn_label: Optional[Label] = None
-        self.btn_menu: Optional[Button] = None
-        self.btn_back: Optional[Button] = None
-        self.btn_end: Optional[Button] = None
-        self.hint_bar: Optional[Label] = None
-        self.board: Optional[ScrollableContainer] = None
-        self.info_panel: Optional[Log] = None
-        self.log_panel: Optional[Log] = None
+        self.header_title = None
+        self.turn_label = None
+        self.btn_menu = None
+        self.btn_back = None
+        self.btn_end = None
+        self.hint_bar = None
+        self.board = None
+        self.char_container = None
+        self.info_panel = None
+        self.log_panel = None
         self.show_logs = True
         # 主菜单数据
-        self.cfg: Optional[dict] = None
-        self.packs: Optional[dict] = None
+        self.cfg = None
+        self.packs = None
         self.menu_state = "root"  # root | choose_pack | edit_name
-        self.name_input: Optional[Input] = None
+        self.name_input = None
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="topbar"):
@@ -138,8 +165,11 @@ class GameTextualApp(App):
             yield self.hint_bar
 
         with Horizontal(classes="main"):
-            self.board = ScrollableContainer(id="board", classes="col")
-            yield self.board
+            with Vertical(id="leftcol", classes="col"):
+                self.board = ScrollableContainer(id="board")
+                yield self.board
+                self.char_container = Vertical(id="char_panel_container")
+                yield self.char_container
             with Vertical(id="right", classes="col"):
                 yield Label("信息", classes="sec_title")
                 self.info_panel = Log(id="info")
@@ -183,7 +213,8 @@ class GameTextualApp(App):
             if self.btn_end:
                 self.btn_end.disabled = True
             if self.hint_bar:
-                self.hint_bar.update("提示: 从主菜单开始游戏或设置")
+                # 更短提示，减小视觉占用
+                self.hint_bar.update("提示: 开始游戏或设置")
             return
         title = "场景"
         try:
@@ -203,21 +234,23 @@ class GameTextualApp(App):
             self.btn_end.disabled = False
         if self.hint_bar:
             if self.sel_minion is None:
-                self.hint_bar.update("提示: 点击资源=拾取；选择队员后可进行更多操作")
+                self.hint_bar.update("提示: 点资源=拾取；选队员后可攻击/装备")
             else:
-                self.hint_bar.update("已选中队员：点击敌人=攻击；点击背包装备=装备；Esc 取消")
+                self.hint_bar.update("已选：点敌人=攻击；点背包=装备；Esc 取消")
 
     def _append_log(self, text: str) -> None:
         if not self.log_panel:
             return
         for s in _to_plain_lines(text):
-            self.log_panel.write_line(s)
+            if s.strip():
+                self.log_panel.write_line(s)
 
     def _append_info(self, text: str) -> None:
         if not self.info_panel:
             return
         for s in _to_plain_lines(text):
-            self.info_panel.write_line(s)
+            if s.strip():
+                self.info_panel.write_line(s)
 
     def _refresh_all(self) -> None:
         self._set_scene_header()
@@ -241,52 +274,152 @@ class GameTextualApp(App):
             return
         self._epoch += 1
         _clear_container(self.board)
-        # 队伍
-        self.board.mount(Label("队伍", classes="sec_title"))
-        board = getattr(self.controller.game.player, 'board', [])
-        if not board:
-            self.board.mount(Label("(空)", classes="hint"))
-        else:
-            for i, m in enumerate(board, 1):
-                text = C.strip(str(m))
-                btn = Button(text, id=f"m_{i}__{self._epoch}", classes="item tight friendly")
-                if self.sel_minion == (i - 1):
-                    btn.add_class("selected")
-                self.board.mount(btn)
+        if self.char_container:
+            _clear_container(self.char_container)
+        # 复用控制器的区块文本，保证与 s 指令一致
+        from re import match
+        def mount_section(title: str, section_text: str, token_prefix: str, button_prefix: str, btn_class: str, highlight: bool = False):
+            lines = [ln for ln in _to_plain_lines(section_text) if ln.strip() != ""]
+            if not lines:
+                return
+            # 标题行
+            self.board.mount(Label(lines[0], classes="sec_title tight"))
+            if len(lines) == 1:
+                return
+            # 其余行：解析 token 列（如 "  m1  文本"）
+            for ln in lines[1:]:
+                m = match(r"^\s*(\w\d+)\s+(.*)$", ln)
+                if m and m.group(1).lower().startswith(token_prefix):
+                    token = m.group(1)
+                    body = m.group(2)
+                    try:
+                        idx = int(token[1:])
+                    except Exception:
+                        idx = 0
+                    btn = Button(body, id=f"{button_prefix}_{idx}__{self._epoch}", classes=f"item tight {btn_class}")
+                    if button_prefix == 'm' and self.sel_minion == (idx - 1):
+                        btn.add_class("selected")
+                    if highlight:
+                        btn.add_class("highlight")
+                    self.board.mount(btn)
+                else:
+                    # 普通文本行
+                    self.board.mount(Label(ln, classes="tight hint"))
+
+        # 各区块
+        # 玩家队伍
+        try:
+            mount_section("队伍", self.controller._section_player(), 'm', 'm', 'friendly', highlight=False)
+        except Exception:
+            pass
         # 敌人
-        self.board.mount(Label("敌人", classes="sec_title"))
-        enemies = getattr(self.controller.game, 'enemies', None) or getattr(self.controller.game, 'enemy_zone', [])
-        if not enemies:
-            self.board.mount(Label("(无)", classes="hint"))
-        else:
-            for i, e in enumerate(enemies, 1):
-                text = C.strip(str(e))
-                btn = Button(text, id=f"e_{i}__{self._epoch}", classes="item tight enemy")
-                if self.sel_minion is not None:
-                    btn.add_class("highlight")
-                self.board.mount(btn)
+        try:
+            hl = self.sel_minion is not None
+            mount_section("敌人", self.controller._section_enemy(), 'e', 'e', 'enemy', highlight=hl)
+        except Exception:
+            pass
         # 资源
-        self.board.mount(Label("资源", classes="sec_title"))
-        res = self.controller.game.get_state().get('resources', [])
-        if not res:
-            self.board.mount(Label("(空)", classes="hint"))
+        try:
+            mount_section("资源", self.controller._section_resources(), 'r', 'r', 'resource', highlight=False)
+        except Exception:
+            pass
+        # 背包（含可合成列表文本）
+        try:
+            mount_section("背包", self.controller._section_inventory(), 'i', 'i', 'equip', highlight=(self.sel_minion is not None))
+        except Exception:
+            pass
+        # 角色面板（左下角）：显示当前选中队员(或玩家)与装备槽
+        try:
+            self._mount_char_panel()
+        except Exception:
+            pass
+
+    def _mount_char_panel(self) -> None:
+        if (not self.char_container) or (not self.controller):
+            return
+        game = self.controller.game
+        # 目标：优先选中的队员，否则玩家
+        board = getattr(game.player, 'board', [])
+        target = None
+        if self.sel_minion is not None and 0 <= self.sel_minion < len(board):
+            target = board[self.sel_minion]
+        # 名称与数值
+        if target is not None:
+            try:
+                name = getattr(target, 'display_name', None) or target.__class__.__name__
+            except Exception:
+                name = '随从'
+            try:
+                atk = int(getattr(target, 'get_total_attack', lambda: getattr(target, 'atk', 0))())
+            except Exception:
+                atk = int(getattr(target, 'atk', 0))
+            cur_hp = int(getattr(target, 'hp', 0))
+            max_hp = int(getattr(target, 'max_hp', cur_hp))
         else:
-            for i, r in enumerate(res, 1):
-                btn = Button(C.strip(str(r)), id=f"r_{i}__{self._epoch}", classes="item tight resource")
-                self.board.mount(btn)
-        # 背包
-        self.board.mount(Label("背包", classes="sec_title"))
-        inv = self.controller.game.player.inventory
-        if not inv.slots:
-            self.board.mount(Label("(空)", classes="hint"))
-        else:
-            for i, slot in enumerate(inv.slots, 1):
-                text = C.strip(str(slot))
-                btn = Button(text, id=f"i_{i}__{self._epoch}", classes="item tight equip")
-                it = slot.item
-                if isinstance(it, (WeaponItem, ArmorItem, ShieldItem)) and self.sel_minion is not None:
-                    btn.add_class("highlight")
-                self.board.mount(btn)
+            # 玩家摘要：总攻=队伍总和，玩家HP
+            name = getattr(game.player, 'name', '玩家')
+            try:
+                atk = int(game.player.get_total_attack())
+            except Exception:
+                atk = 0
+            cur_hp = int(getattr(game.player, 'hp', 0))
+            max_hp = int(getattr(game.player, 'max_hp', cur_hp))
+        # 容器
+        self.char_container.mount(Label("角色", id="char_header", classes="sec_title tight"))
+        from textual.containers import Vertical, Horizontal
+        panel = Vertical(id="char_panel")
+        stats = f"{name}  [攻 {atk} | HP {cur_hp}/{max_hp}]"
+        panel.mount(Label(stats, id="char_stats", classes="tight"))
+        # 装备槽（仅当选中目标且其具有 equipment）
+        slots_row = Horizontal(id="slots")
+        left_txt = "左:空"; armor_txt = "甲:空"; right_txt = "右:空"
+        left_tip = armor_tip = right_tip = ""
+        if target is not None:
+            eq = getattr(target, 'equipment', None)
+            if eq:
+                if getattr(eq, 'left_hand', None):
+                    lh = eq.left_hand
+                    left_txt = f"左:{getattr(lh, 'name', '???')}"
+                    bonus = []
+                    if getattr(lh, 'attack', 0): bonus.append(f"+{lh.attack}攻")
+                    if getattr(lh, 'defense', 0): bonus.append(f"+{lh.defense}防")
+                    if getattr(lh, 'is_two_handed', False): bonus.append("双手")
+                    left_tip = " ".join(bonus) if bonus else "无加成"
+                if getattr(eq, 'armor', None):
+                    ar = eq.armor
+                    armor_txt = f"甲:{getattr(ar, 'name', '???')}"
+                    bonus = []
+                    if getattr(ar, 'attack', 0): bonus.append(f"+{ar.attack}攻")
+                    if getattr(ar, 'defense', 0): bonus.append(f"+{ar.defense}防")
+                    armor_tip = " ".join(bonus) if bonus else "无加成"
+                if getattr(eq, 'right_hand', None):
+                    rh = eq.right_hand
+                    right_txt = f"右:{getattr(rh, 'name', '???')}"
+                    bonus = []
+                    if getattr(rh, 'attack', 0): bonus.append(f"+{rh.attack}攻")
+                    if getattr(rh, 'defense', 0): bonus.append(f"+{rh.defense}防")
+                    right_tip = " ".join(bonus) if bonus else "无加成"
+        # 创建槽位按钮（悬浮提示）
+        btn_left = Button(left_txt, classes="item tight slot", id=f"slot_left__{self._epoch}")
+        btn_armor = Button(armor_txt, classes="item tight slot", id=f"slot_armor__{self._epoch}")
+        btn_right = Button(right_txt, classes="item tight slot", id=f"slot_right__{self._epoch}")
+        try:
+            # 直接设置 tooltip（Textual 支持时会显示）
+            if left_tip: btn_left.tooltip = C.strip(left_tip)
+            if armor_tip: btn_armor.tooltip = C.strip(armor_tip)
+            if right_tip: btn_right.tooltip = C.strip(right_tip)
+        except Exception:
+            pass
+        # 若未选目标，则将槽位禁用
+        if target is None:
+            btn_left.disabled = True
+            btn_armor.disabled = True
+            btn_right.disabled = True
+        slots_row.mount(btn_left)
+        slots_row.mount(btn_armor)
+        slots_row.mount(btn_right)
+        panel.mount(slots_row)
+        self.char_container.mount(panel)
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         bid = event.button.id or ""
