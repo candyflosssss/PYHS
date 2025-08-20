@@ -6,6 +6,7 @@
 from __future__ import annotations
 from typing import Callable, Optional
 from ui import colors as C
+from core.combatant import Combatant
 
 
 class ResourceItem:
@@ -20,8 +21,8 @@ class ResourceItem:
         return C.resource(f"{self.name}(+{self.effect_value})")
 
 
-class Enemy:
-    """敌人单位"""
+class Enemy(Combatant):
+    """敌人单位（继承 Combatant，统一接口）"""
 
     def __init__(
         self,
@@ -30,10 +31,8 @@ class Enemy:
         hp: int,
         death_effect: Optional[Callable[["GameLike"], None]] = None,
     ):
-        self.name = name
-        self.attack = attack
-        self.hp = hp
-        self.max_hp = hp
+        super().__init__(attack, hp, name=name)
+        # 敌人默认不使用装备，但保留 equipment/defense 接口
         self.death_effect = death_effect
         self.can_attack = True
 
@@ -41,8 +40,9 @@ class Enemy:
         return C.enemy(f"{self.name}({self.attack}/{self.hp})")
 
     def take_damage(self, damage: int) -> bool:
-        """返回是否死亡"""
-        self.hp -= damage
+        # 敌人默认无防御（若未来引入护甲，可用 defense 抵消）
+        d = max(0, int(damage))
+        self.hp -= d
         return self.hp <= 0
 
     def on_death(self, game: "GameLike") -> None:

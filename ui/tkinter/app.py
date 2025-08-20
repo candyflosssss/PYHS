@@ -6,6 +6,7 @@ relative imports for other UI helpers.
 from __future__ import annotations
 
 import os
+import json
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 from typing import Optional
@@ -39,6 +40,10 @@ class GameTkApp:
 
 		self.root = tk.Tk()
 		self.root.title("COMOS - Tk GUI")
+		# 选中描边粗细（保持常量，避免选中时布局跳动）
+		self._border_default = 3
+		self._border_selected_enemy = 3
+		self._border_selected_member = 3
 
 		# Containers
 		self.frame_menu = ttk.Frame(self.root)
@@ -47,6 +52,15 @@ class GameTkApp:
 
 		self._build_menu(self.frame_menu)
 		self._build_game(self.frame_game)
+
+		# 若传入了 initial_scene，则自动进入游戏（避免用户还需手动点击“开始游戏”）
+		try:
+			if self._pending_scene:
+				# 使用 cfg 中 name（已同步）作为玩家名
+				self._start_game(self.cfg.get('name', player_name), self._pending_scene)
+		except Exception:
+			# 不应阻塞 UI 初始化
+			pass
 
 	# ---- helpers ----
 
@@ -69,12 +83,12 @@ class GameTkApp:
 		try:
 			for w in list(getattr(self, 'enemy_card_wraps', {}).values()):
 				try:
-					w.configure(highlightbackground="#cccccc")
+					w.configure(highlightbackground="#cccccc", highlightthickness=self._border_default)
 				except Exception:
 					pass
 			for w in list(getattr(self, 'card_wraps', {}).values()):
 				try:
-					w.configure(highlightbackground="#cccccc")
+					w.configure(highlightbackground="#cccccc", highlightthickness=self._border_default)
 				except Exception:
 					pass
 		except Exception as e:
@@ -337,6 +351,11 @@ class GameTkApp:
 			self.text_info.tag_configure('success', foreground='#27ae60')
 			self.text_info.tag_configure('warning', foreground='#E67E22')
 			self.text_info.tag_configure('attack', foreground='#c0392b', font=("Segoe UI", 8, 'bold'))
+			self.text_info.tag_configure('error', foreground='#d9534f', underline=True)
+		except Exception:
+			pass
+		try:
+			self.text_info.bind('<Motion>', self._on_info_motion)
 		except Exception:
 			pass
 
@@ -353,11 +372,16 @@ class GameTkApp:
 			self.text_log.tag_configure('success', foreground='#27ae60')
 			self.text_log.tag_configure('warning', foreground='#E67E22')
 			self.text_log.tag_configure('attack', foreground='#c0392b', font=("Segoe UI", 8, 'bold'))
+			self.text_log.tag_configure('error', foreground='#d9534f', underline=True)
+		except Exception:
+			pass
+		try:
+			self.text_log.bind('<Motion>', self._on_log_motion)
 		except Exception:
 			pass
 
 	# -------- Render --------
-	def refresh_all(self):
+	def refresh_all(self, skip_info_log: bool = False):
 		if self.mode != 'game' or not self.controller:
 			return
 		# 校验或重置选择态，防止幽灵高亮
@@ -375,29 +399,21 @@ class GameTkApp:
 		except Exception:
 			self.scene_var.set("场景: -")
 
-		# 列表区：背包与敌人视图通过卡片和资源区展示
-		def fill_inv(lb: tk.Listbox, text: str):
-			lb.delete(0, tk.END)
-			for line in (text or '').splitlines():
-				s = C.strip(line).rstrip()
-				if not s:
-					continue
-				if s.endswith('):') or s.endswith(':'):
-					continue
-				lb.insert(tk.END, s)
-		fill_inv(self.list_inv, self.controller._section_inventory())
+		# 列表区：仅背包走轻量刷新函数，资源按专用渲染
+		self._refresh_inventory_only()
 		self._render_resources()
 
-		# 信息与日志
-		self.text_info.delete('1.0', tk.END)
-		for line in (self.controller._section_info() or '').splitlines():
-			self._append_info(line)
-		try:
-			logs = self.controller.game.pop_logs()
-			for line in logs:
-				self._append_log(line)
-		except Exception:
-			pass
+		# 信息与日志（可选择跳过，避免与 _after_cmd 的即时输出重复导致闪烁）
+		if not skip_info_log:
+			self.text_info.delete('1.0', tk.END)
+			for line in (self.controller._section_info() or '').splitlines():
+				self._append_info(line)
+			try:
+				logs = self.controller.game.pop_logs()
+				for line in logs:
+					self._append_log(line)
+			except Exception:
+				pass
 
 		# 卡片
 		self._render_enemy_cards()
@@ -426,7 +442,7 @@ class GameTkApp:
 			start = 1 + (max_per_row - k) // 2
 			for j, e in enumerate(row_members):
 				e_index = r_idx * max_per_row + j + 1
-				wrap = tk.Frame(row_f, highlightthickness=1, highlightbackground="#cccccc")
+				wrap = tk.Frame(row_f, highlightthickness=self._border_default, highlightbackground="#cccccc")
 				inner = self._create_enemy_card(wrap, e, e_index)
 				inner.pack(fill=tk.BOTH, expand=True)
 				col = start + j
@@ -475,26 +491,32 @@ class GameTkApp:
 			m_idx = self.selected_member_index or 1
 			e_token = f"e{idx}"
 			m_token = f"m{m_idx}"
-			out = self._send(f"a {m_token} {e_token}")  # Send attack command
-			# controller._process_command usually returns (out, meta)
+			# 根据可能的技能上下文，决定命令
+			sk = getattr(self, 'skill_target_index', None)
+			# drain / arcane_missiles 通过 skill 命令执行
+			if hasattr(self, 'selected_skill_name') and self.selected_skill_name in ('drain','arcane_missiles'):
+				out = self._send(f"skill {self.selected_skill_name} {m_token} {e_token}")
+			else:
+				out = self._send(f"a {m_token} {e_token}")
 			try:
 				resp = out[0] if isinstance(out, (list, tuple)) and len(out) > 0 else out  # Get response
 			except Exception:
 				resp = out
 			self._after_cmd(resp)
 			self.selected_skill = None
+			self.selected_skill_name = None
 			return
 		prev = getattr(self, 'selected_enemy_index', None)
 		if prev and prev in getattr(self, 'enemy_card_wraps', {}):
 			try:
-				self.enemy_card_wraps[prev].configure(highlightbackground="#cccccc")
+				self.enemy_card_wraps[prev].configure(highlightbackground="#cccccc", highlightthickness=self._border_default)
 			except Exception:
 				pass
 		self.selected_enemy_index = idx
 		try:
 			w = self.enemy_card_wraps.get(idx)
 			if w:
-				w.configure(highlightbackground="#FF6347")
+				w.configure(highlightbackground="#FF6347", highlightthickness=self._border_selected_enemy)
 		except Exception:
 			pass
 
@@ -505,7 +527,7 @@ class GameTkApp:
 			tgt_token = f"m{idx}"
 			out = self._send(f"heal m{m_idx} {tgt_token}")
 			try:
-				resp = out[0] if isinstance(out, (list, tuple)) and len(out) > 0 else out
+				resp = out[0] if (isinstance(out, (list, tuple)) and len(out) > 0) else out
 			except Exception:
 				resp = out
 			self._after_cmd(resp)
@@ -514,14 +536,14 @@ class GameTkApp:
 		prev = getattr(self, 'selected_member_index', None)
 		if prev and prev in getattr(self, 'card_wraps', {}):
 			try:
-				self.card_wraps[prev].configure(highlightbackground="#cccccc")
+				self.card_wraps[prev].configure(highlightbackground="#cccccc", highlightthickness=self._border_default)
 			except Exception:
 				pass
 		self.selected_member_index = idx
 		try:
 			w = self.card_wraps.get(idx)
 			if w:
-				w.configure(highlightbackground="#1E90FF")
+				w.configure(highlightbackground="#1E90FF", highlightthickness=self._border_selected_member)
 		except Exception:
 			pass
 		# 更新操作栏
@@ -555,7 +577,7 @@ class GameTkApp:
 			start = 1 + (max_per_row - k) // 2
 			for j, m in enumerate(row_members):
 				m_index = r_idx * max_per_row + j + 1
-				wrap = tk.Frame(row_f, highlightthickness=1, highlightbackground="#cccccc")
+				wrap = tk.Frame(row_f, highlightthickness=self._border_default, highlightbackground="#cccccc")
 				inner = self._create_character_card(wrap, m, m_index)
 				inner.pack(fill=tk.BOTH, expand=True)
 				col = start + j
@@ -865,14 +887,167 @@ class GameTkApp:
 
 		bind_recursive(root_widget)
 
+	def _on_log_motion(self, event):
+		"""Show a small tooltip with meta info when hovering over a log line that has meta."""
+		try:
+			if not hasattr(self, '_log_meta'):
+				return
+			idx = self.text_log.index(f"@{event.x},{event.y}")
+			line_no = idx.split('.')[0]
+			key = f"{line_no}.0"
+			meta = self._log_meta.get(key)
+			# hide previous if same
+			if getattr(self, '_log_tooltip_key', None) == key and getattr(self, '_log_tooltip', None):
+				return
+			# destroy old
+			if getattr(self, '_log_tooltip', None):
+				try:
+					self._log_tooltip.destroy()
+				except Exception:
+					pass
+				self._log_tooltip = None
+				self._log_tooltip_key = None
+			if not meta:
+				return
+			# create tooltip
+			text = json.dumps(meta, ensure_ascii=False, indent=1)
+			x = self.text_log.winfo_rootx() + event.x + 12
+			y = self.text_log.winfo_rooty() + event.y + 12
+			try:
+				tw = tk.Toplevel(self.text_log)
+				tw.wm_overrideredirect(True)
+				tw.wm_geometry(f"+{x}+{y}")
+				lbl = ttk.Label(tw, text=text, relief='solid', borderwidth=1, padding=6, background='#ffffe0')
+				lbl.pack()
+				self._log_tooltip = tw
+				self._log_tooltip_key = key
+			except Exception:
+				self._log_tooltip = None
+				self._log_tooltip_key = None
+		except Exception:
+			pass
+
+	def _on_info_motion(self, event):
+		"""Show tooltip with meta for info pane when hovering a line that has meta."""
+		try:
+			if not hasattr(self, '_info_meta'):
+				return
+			idx = self.text_info.index(f"@{event.x},{event.y}")
+			line_no = idx.split('.')[0]
+			key = f"{line_no}.0"
+			meta = self._info_meta.get(key)
+			# avoid recreating on same line
+			if getattr(self, '_info_tooltip_key', None) == key and getattr(self, '_info_tooltip', None):
+				return
+			# destroy old
+			if getattr(self, '_info_tooltip', None):
+				try:
+					self._info_tooltip.destroy()
+				except Exception:
+					pass
+				self._info_tooltip = None
+				self._info_tooltip_key = None
+			if not meta:
+				return
+			text = json.dumps(meta, ensure_ascii=False, indent=1)
+			x = self.text_info.winfo_rootx() + event.x + 12
+			y = self.text_info.winfo_rooty() + event.y + 12
+			try:
+				tw = tk.Toplevel(self.text_info)
+				tw.wm_overrideredirect(True)
+				tw.wm_geometry(f"+{x}+{y}")
+				lbl = ttk.Label(tw, text=text, relief='solid', borderwidth=1, padding=6, background='#ffffe0')
+				lbl.pack()
+				self._info_tooltip = tw
+				self._info_tooltip_key = key
+			except Exception:
+				self._info_tooltip = None
+				self._info_tooltip_key = None
+		except Exception:
+			pass
+
 	# -------- Actions --------
-	def _append_info(self, text: str):
-		self.text_info.insert(tk.END, C.strip(text) + "\n")
-		self.text_info.see(tk.END)
+	def _append_info(self, text_or_entry):
+		"""支持结构化日志（dict）渲染到信息窗；同时保存 meta 以悬浮显示。"""
+		try:
+			if isinstance(text_or_entry, dict):
+				typ = text_or_entry.get('type', 'info')
+				txt = text_or_entry.get('text', '')
+				meta = text_or_entry.get('meta', {}) or {}
+			else:
+				typ = 'info'
+				txt = str(text_or_entry)
+				meta = {}
+			clean = C.strip(str(txt))
+			start = self.text_info.index(tk.END)
+			self.text_info.insert(tk.END, clean + "\n")
+			end = self.text_info.index(tk.END)
+			try:
+				if typ in ('info','success','warning','attack','error'):
+					self.text_info.tag_add(typ, start, end)
+				else:
+					self.text_info.tag_add('info', start, end)
+			except Exception:
+				pass
+			if not hasattr(self, '_info_meta'):
+				self._info_meta = {}
+			self._info_meta[start] = meta
+			self.text_info.see(tk.END)
+		except Exception:
+			try:
+				self.text_info.insert(tk.END, C.strip(str(text_or_entry)) + "\n")
+				self.text_info.see(tk.END)
+			except Exception:
+				pass
 
 	def _append_log(self, text: str):
-		self.text_log.insert(tk.END, C.strip(text) + "\n")
-		self.text_log.see(tk.END)
+		"""Accept either a string or a structured log dict and render it.
+		If dict, expected keys: type, text, meta
+		"""
+		try:
+			if isinstance(text, dict):
+				typ = text.get('type', 'info')
+				txt = text.get('text', '')
+				meta = text.get('meta', {}) or {}
+			else:
+				typ = 'info'
+				txt = str(text)
+				meta = {}
+			clean = C.strip(str(txt))
+			start = self.text_log.index(tk.END)
+			self.text_log.insert(tk.END, clean + "\n")
+			end = self.text_log.index(tk.END)
+			# apply semantic coloring tags
+			try:
+				if typ == 'attack' or typ == 'damage':
+					self.text_log.tag_add('attack', start, end)
+				elif typ == 'success':
+					self.text_log.tag_add('success', start, end)
+				elif typ == 'warning':
+					self.text_log.tag_add('warning', start, end)
+				elif typ == 'error':
+					self.text_log.tag_add('error', start, end)
+				else:
+					self.text_log.tag_add('info', start, end)
+			except Exception:
+				pass
+			# store meta as JSON-like string on the tag for tooltip retrieval
+			try:
+				self.text_log.tag_config(start, underline=False)
+				# attach a simple mapping from index to meta via a dict on the widget
+				if not hasattr(self, '_log_meta'):
+					self._log_meta = {}
+				self._log_meta[start] = meta
+			except Exception:
+				pass
+			self.text_log.see(tk.END)
+		except Exception:
+			# fallback to simple insert
+			try:
+				self.text_log.insert(tk.END, C.strip(str(text)) + "\n")
+				self.text_log.see(tk.END)
+			except Exception:
+				pass
 
 	def _selected_index(self, lb: tk.Listbox) -> Optional[int]:
 		sel = lb.curselection()
@@ -881,12 +1056,57 @@ class GameTkApp:
 		return sel[0]
 
 	def _pick_resource(self, idx: int):
+		"""轻量拾取资源：仅更新资源/背包与日志，不触发整页刷新。"""
 		out = self._send(f"t r{idx}")
 		try:
 			resp = out[0] if isinstance(out, (list, tuple)) and len(out) > 0 else out
 		except Exception:
 			resp = out
-		self._after_cmd(resp)
+		# 仅附加日志/信息，不清空，不重绘整页
+		try:
+			import os as _os
+			_home = _os.path.expanduser('~')
+			_logdir = _os.path.join(_home, '.pyhs')
+			_os.makedirs(_logdir, exist_ok=True)
+			_logpath = _os.path.join(_logdir, 'game.log')
+			with open(_logpath, 'a', encoding='utf-8') as f:
+				for line in resp or []:
+					# support structured log dicts
+					if isinstance(line, dict):
+						disp = line.get('text', '')
+						self._append_info(disp)
+						self._append_log(line)
+						f.write(json.dumps(line, ensure_ascii=False) + "\n")
+					else:
+						self._append_info(line)
+						self._append_log(line)
+						f.write(str(line) + "\n")
+		except Exception as e:
+			self._log_exception(e, '_pick_resource_log')
+		# 局部刷新：资源按钮与背包列表
+		try:
+			self._render_resources()
+			self._refresh_inventory_only()
+		except Exception as e:
+			self._log_exception(e, '_pick_resource_partial_refresh')
+		# 保持当前选中高亮与卡片视图不变，避免视觉跳动
+
+	def _refresh_inventory_only(self):
+		"""仅刷新背包列表，避免触发卡片与场景的重绘。"""
+		try:
+			text = self.controller._section_inventory()
+			lb = self.list_inv
+			lb.delete(0, tk.END)
+			for line in (text or '').splitlines():
+				s = C.strip(line).rstrip()
+				if not s:
+					continue
+				# 跳过标题与分组行
+				if s.endswith('):') or s.endswith(':'):
+					continue
+				lb.insert(tk.END, s)
+		except Exception as e:
+			self._log_exception(e, '_refresh_inventory_only')
 
 	def on_attack(self):
 		if not self.controller:
@@ -1006,7 +1226,11 @@ class GameTkApp:
 		try:
 			self.text_info.delete('1.0', tk.END)
 			for line in out_lines or []:
-				self._append_info(line)
+				# support structured log dicts
+				if isinstance(line, dict):
+					self._append_info(line.get('text', ''))
+				else:
+					self._append_info(line)
 		except Exception as e:
 			self._log_exception(e, '_after_cmd_info')
 		# append to persistent log file (cross-platform) and log widget
@@ -1021,7 +1245,29 @@ class GameTkApp:
 						self._append_log(line)
 					except Exception:
 						pass
-					f.write(line + "\n")
+					# write structured logs as JSON for better persistence
+					try:
+						if isinstance(line, dict):
+							f.write(json.dumps(line, ensure_ascii=False) + "\n")
+						else:
+							f.write(str(line) + "\n")
+					except Exception:
+						try:
+							f.write(str(line) + "\n")
+						except Exception:
+							pass
+				# consume game structured logs (e.g., DND to_hit/damage) and render to both panes
+				try:
+					logs = self.controller.game.pop_logs()
+					for L in logs:
+						self._append_info(L)
+						self._append_log(L)
+						try:
+							f.write(json.dumps(L, ensure_ascii=False) + "\n")
+						except Exception:
+							f.write(str(L) + "\n")
+				except Exception:
+					pass
 		except Exception as e:
 			self._log_exception(e, '_after_cmd_log')
 		# 保证恢复默认高亮
@@ -1029,7 +1275,7 @@ class GameTkApp:
 			self._reset_highlights()
 		except Exception as e:
 			self._log_exception(e, '_after_cmd_reset')
-		self.refresh_all()
+		self.refresh_all(skip_info_log=True)
 
 	# -------- Mode --------
 	def _start_game(self, player_name: str, initial_scene: Optional[str]):
@@ -1041,7 +1287,7 @@ class GameTkApp:
 		self.text_info.delete('1.0', tk.END)
 		for line in full.splitlines():
 			self._append_info(line)
-		self.refresh_all()
+		self.refresh_all(skip_info_log=True)
 		try:
 			base = os.path.join(os.path.expanduser('~'), 'AppData', 'Local', 'PYHS')
 			os.makedirs(base, exist_ok=True)

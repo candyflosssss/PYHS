@@ -70,6 +70,30 @@ def attach_tooltip_deep(root_widget: tk.Widget, text_provider: Callable[[], str]
                 lbl = ttk.Label(tw, text=text, relief='solid', borderwidth=1, padding=6, background='#ffffe0')
                 lbl.pack()
                 tip['win'] = tw
+                # 周期性巡检，兜底隐藏（防止未触发 Leave/Motion 时残留）
+                def tick():
+                    try:
+                        if tip['win'] is None:
+                            return
+                        rx, ry = root_widget.winfo_rootx(), root_widget.winfo_rooty()
+                        rw, rh = root_widget.winfo_width(), root_widget.winfo_height()
+                        px, py = root_widget.winfo_pointerx(), root_widget.winfo_pointery()
+                        inside = (rx <= px <= rx + rw) and (ry <= py <= ry + rh)
+                        if (not inside) or (not root_widget.winfo_ismapped()):
+                            hide_if_outside()
+                            return
+                    except Exception:
+                        hide_if_outside()
+                        return
+                    # 继续下一次巡检
+                    try:
+                        root_widget.after(120, tick)
+                    except Exception:
+                        pass
+                try:
+                    root_widget.after(120, tick)
+                except Exception:
+                    pass
         except Exception:
             pass
 
@@ -107,3 +131,12 @@ def attach_tooltip_deep(root_widget: tk.Widget, text_provider: Callable[[], str]
             bind_recursive(ch)
 
     bind_recursive(root_widget)
+
+    # 当顶层窗口失焦/离开/销毁时强制隐藏
+    try:
+        top = root_widget.winfo_toplevel()
+        top.bind('<FocusOut>', lambda e: hide_if_outside(), add='+')
+        top.bind('<Leave>', lambda e: hide_if_outside(), add='+')
+        root_widget.bind('<Destroy>', lambda e: hide_if_outside(), add='+')
+    except Exception:
+        pass

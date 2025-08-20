@@ -1,68 +1,37 @@
 import random
-from systems.equipment_system import EquipmentSystem
 from ui import colors as C
+from .combatant import Combatant
 
-class Card:
+class Card(Combatant):
     weight = 1  # 抽牌权重
 
     def __init__(self, atk, hp):
-        self.atk = atk
-        self.base_atk = atk  # 基础攻击力
-        self.hp = hp
-        self.max_hp = hp  # 记录最大生命值
+        super().__init__(atk, hp)
+        self.atk = atk  # 兼容旧字段
         self.attacks = 0
-        self.can_attack = False
-        self.equipment = EquipmentSystem()  # 添加装备系统
-        # 技能/被动可选字段（UGC可注入）
-        self.tags = []          # e.g. ["healer","mage","tank"]
-        self.passive = {}       # e.g. {"no_counter":true}
-        self.skills = []        # e.g. [{"name":"治疗","heal":4}]
+        # equipment/tags/passive/skills 已在 Combatant 初始化
 
-    def get_total_attack(self):
-        """获取总攻击力（基础+装备）"""
-        return self.base_atk + self.equipment.get_total_attack()
-    
-    def get_total_defense(self):
-        """获取总防御力"""
-        return self.equipment.get_total_defense()
-
-    # 兼容属性访问：允许以 card.attack / card.defense 获取动态数值
-    @property
-    def attack(self):
-        return self.get_total_attack()
-
-    @property
-    def defense(self):
-        return self.get_total_defense()
-    
     def take_damage(self, damage):
         """处理卡牌受到伤害（考虑防御力）"""
         defense = self.get_total_defense()
-        actual_damage = max(1, damage - defense)  # 至少造成1点伤害
+        actual_damage = max(1, damage - defense)
         self.hp -= actual_damage
-    # 保持安静，效果日志由具体技能/控制器负责
 
     def on_play(self, game, owner, target=None):
-        """出场触发（子类重写）"""
         pass
 
     def on_death(self, game, owner):
-        """死亡触发（子类重写）"""
         pass
 
     def heal(self, amount):
-        """处理卡牌回血"""
         self.hp = min(self.hp + amount, self.max_hp)
-    # 效果日志交由上层统一处理
 
     def sync_state(self):
-        """将卡牌状态转换为字符串"""
         windfury = getattr(self, 'windfury', False)
         total_atk = self.get_total_attack()
         return f"{self.__class__.__name__},{total_atk},{self.hp},{self.max_hp},{self.attacks},{int(self.can_attack)},{int(windfury)}"
 
     def info(self):
-        """返回卡牌的详细信息"""
         total_atk = self.get_total_attack()
         defense = self.get_total_defense()
         equipment_info = f", {self.equipment}" if str(self.equipment) != "装备: 无" else ""

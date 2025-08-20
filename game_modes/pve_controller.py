@@ -107,6 +107,13 @@ class SimplePvEController:
                 except Exception:
                     name = '随从'
                 name_colored = C.friendly(str(name))
+                # DND 概览（可选）
+                try:
+                    dnd = getattr(m, 'dnd', None)
+                    ac = dnd.get('ac') if isinstance(dnd, dict) else None
+                    dnd_part = f" AC:{ac}" if ac is not None else ""
+                except Exception:
+                    dnd_part = ""
                 # 装备摘要
                 eq = getattr(m, 'equipment', None)
                 eq_parts = []
@@ -142,7 +149,7 @@ class SimplePvEController:
                 atk_str = C.stat_atk(f"{total_atk}攻 ({base_atk}+{eq_atk})")
                 hp_str = C.stat_hp(f"{cur_hp}/{max_hp} HP")
                 def_str = C.stat_def(f"{eq_def}防")
-                stat_str = f"[{atk_str} | {hp_str} | {def_str}]"
+                stat_str = f"[{atk_str} | {hp_str} | {def_str}]{dnd_part}"
                 line = f"{name_colored} {stat_str}{eq_str} {status}"
                 pairs.append((f"m{i}", line))
             lines.extend(self._format_token_list(pairs))
@@ -831,6 +838,37 @@ class SimplePvEController:
                     guide.append('  (无)')
                 out.extend(guide)
                 return out, False
+        # 技能调用: skill <name> <source mN> [target]
+        if c in ('skill', 'sk') or c in ('sweep','basic_heal','drain','taunt','arcane_missiles'):
+            # 支持直接以技能名开头的快捷方式
+            if c in ('skill', 'sk'):
+                if not args:
+                    return ['用法: skill <name> <source mN> [target]'], False
+                skill_name = args[0]
+                rest = args[1:]
+            else:
+                skill_name = c
+                rest = args
+            if not rest:
+                return ['请指定来源随从: mN'], False
+            src_tok = rest[0]
+            if not src_tok.startswith('m'):
+                return ['来源需为随从标记 mN'], False
+            try:
+                src_idx = int(src_tok[1:])
+            except Exception:
+                return ['来源随从格式错误 mN'], False
+            tgt_tok = rest[1] if len(rest) >= 2 else None
+            ok, msg = self.game.use_skill(skill_name, src_idx, tgt_tok)
+            self._record(f"技能 {skill_name} -> {msg}")
+            logs = getattr(self.game, 'pop_logs', None)
+            info_lines = [f"技能 {skill_name} 执行: {msg}"]
+            if callable(logs):
+                for line in logs():
+                    info_lines.append(f"  · {line}")
+            self.info = info_lines
+            out.append(self._render_full_view())
+            return out, False
         if c == 'end':
             self.game.end_turn()
             msg = f"进入回合 {self.game.turn}"

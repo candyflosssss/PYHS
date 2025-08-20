@@ -1,0 +1,6 @@
+{
+  "warrior": ["sweep","drain"],
+  "priest": ["basic_heal"],
+  "tank": ["taunt"],
+  "mage": ["arcane_missiles"]
+}
