@@ -12,4 +12,4 @@
 - `entities.py`：`Enemy`、`ResourceItem`、`Boss` 的通用定义。
 - `pve_content_factory.py`：敌人/资源/Boss 工厂，提供可复用的预设。
 
-数据流：Controller -> Game(State 变更/日志) -> UI（终端/Textual）。
+数据流：Controller -> Game(State 变更/日志) -> UI（终端/Tkinter）。

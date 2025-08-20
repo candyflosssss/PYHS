@@ -1,4 +1,4 @@
-from ui.gui_app import run_tk
+from ui.tkinter import run_tk
 import sys
 import os
 

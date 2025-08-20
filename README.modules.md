@@ -4,7 +4,7 @@
 - `core/`：基础模型与战斗单元
 - `systems/`：背包、装备、技能判定
 - `game_modes/`：运行时与内容工厂
-- `ui/`：终端配色与 Textual 外壳
+- `ui/`：终端配色与 Tkinter GUI
 - `scenes/`：场景与关卡包
 - `tools/`：开发辅助脚本
 
