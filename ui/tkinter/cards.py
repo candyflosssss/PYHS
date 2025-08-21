@@ -9,7 +9,7 @@ from typing import Any
 from . import ui_utils as U
 
 
-def create_character_card(app, parent: tk.Widget, m: Any, m_index: int) -> ttk.Frame:
+def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_enemy: bool = False) -> ttk.Frame:
     # 攻击值优先从常见字段获取：attack -> atk -> base_atk
     try:
         if hasattr(m, 'attack'):
@@ -52,52 +52,43 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int) -> ttk.F
     # name (top)
     ttk.Label(frame, text=str(name), font=("Segoe UI", 9, "bold")).grid(row=0, column=0, sticky='n', pady=(2, 2))
 
-    # stats: vertical stack (attack, hp, defense)
+    # stats: vertical stack (attack, hp, AC) — 更紧凑的行距与小字体
     stats = ttk.Frame(frame)
     stats.grid(row=1, column=0, sticky='n', pady=(2, 2))
-    # 使用 ASCII 文本确保在 Windows 字体下稳定显示，缩小字体并减小行距
-    ttk.Label(stats, text=f"ATK {total_atk}", foreground="#E6B800", font=("Segoe UI", 9)).pack(anchor=tk.CENTER, pady=0)
-    ttk.Label(stats, text=f"HP {cur_hp}/{max_hp}", foreground="#27ae60" if cur_hp > 0 else "#c0392b", font=("Segoe UI", 9)).pack(anchor=tk.CENTER, pady=0)
-    ttk.Label(stats, text=f"DEF {eq_def}", foreground="#2980b9", font=("Segoe UI", 9)).pack(anchor=tk.CENTER, pady=0)
-    # AC 显示：若未提供 ac，则以 10+DEF 作为回退
+    # 先计算 AC 数值，再渲染文本，避免未定义变量
     try:
-        ac_val = int(ac) if ac is not None else (10 + int(eq_def))
+        if ac is not None:
+            ac_val = int(ac)
+        else:
+            # 计算敏捷调整值
+            dex_mod = 0
+            try:
+                if isinstance(attrs, dict):
+                    dex_raw = attrs.get('dex', attrs.get('DEX'))
+                    if dex_raw is not None:
+                        dex_mod = (int(dex_raw) - 10) // 2
+            except Exception:
+                dex_mod = 0
+            ac_val = 10 + int(eq_def) + int(dex_mod)
     except Exception:
         ac_val = 10 + int(eq_def)
-    ttk.Label(stats, text=f"AC {ac_val}", foreground="#8e44ad", font=("Segoe UI", 9)).pack(anchor=tk.CENTER, pady=0)
-    # 六维总是显示（缺失用 -），数字显示修正值
-    try:
-        keys = ['str','dex','con','int','wis','cha']
-        row_parts = []
-        for k in keys:
-            v = None
-            if isinstance(attrs, dict):
-                v = attrs.get(k, attrs.get(k.upper()))
-            label = k.upper()
-            if v is None:
-                row_parts.append(f"{label} -")
-                continue
-            try:
-                iv = int(v)
-                mod = (iv - 10) // 2
-                row_parts.append(f"{label} {iv}({mod:+d})")
-            except Exception:
-                row_parts.append(f"{label} {v}")
-        ttk.Label(stats, text="  ".join(row_parts), foreground="#7f8c8d", font=("Segoe UI", 8)).pack(anchor=tk.CENTER, pady=0)
-    except Exception:
-        pass
+    # 使用 ASCII 文本，避免表情符号在 Windows 上导致的行高扩大；并采用 Tiny.TLabel 样式（8pt）
+    ttk.Label(stats, text=f"ATK {total_atk}", foreground="#E6B800", style="Tiny.TLabel").grid(row=0, column=0, sticky='w', padx=0, pady=(0, 0))
+    ttk.Label(stats, text=f"HP {cur_hp}/{max_hp}", foreground="#27ae60" if cur_hp > 0 else "#c0392b", style="Tiny.TLabel").grid(row=1, column=0, sticky='w', padx=0, pady=(0, 0))
+    ttk.Label(stats, text=f"AC {ac_val}", foreground="#2980b9", style="Tiny.TLabel").grid(row=2, column=0, sticky='w', padx=0, pady=(0, 0))
 
-    # equipment buttons (right column)
-    right = ttk.Frame(frame)
-    right.grid(row=0, column=1, rowspan=2, sticky='nsew')
-    right.columnconfigure(0, weight=1)
-    right.columnconfigure(1, weight=0)
-
+    # 角色卡右侧装备槽：敌方显示为禁用态（可见信息不可操作），我方可操作
     eq = getattr(m, 'equipment', None)
     left_item = getattr(eq, 'left_hand', None) if eq else None
     armor_item = getattr(eq, 'armor', None) if eq else None
     right_item_raw = getattr(eq, 'right_hand', None) if eq else None
+    # 若左手为双手武器，右手视为被占用
     right_item = left_item if getattr(left_item, 'is_two_handed', False) else right_item_raw
+
+    right = ttk.Frame(frame)
+    right.grid(row=0, column=1, rowspan=2, sticky='nsew')
+    right.columnconfigure(0, weight=1)
+    right.columnconfigure(1, weight=0)
 
     def slot_text(label, item):
         if item:
@@ -126,7 +117,11 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int) -> ttk.F
 
     def make_btn(r, label, item, slot_key):
         text = slot_text(label, item)
-        btn = ttk.Button(right, text=text, command=lambda: app._slot_click(m_index, slot_key, item), style="Tiny.TButton")
+        if is_enemy:
+            # 敌方：禁用按钮，仅展示信息，不触发任何回调
+            btn = ttk.Button(right, text=text, state=tk.DISABLED, style="Tiny.TButton")
+        else:
+            btn = ttk.Button(right, text=text, command=lambda: app._slot_click(m_index, slot_key, item), style="Tiny.TButton")
         btn.grid(row=r, column=1, sticky='e', pady=1, padx=(4, 2))
         U.attach_tooltip_deep(btn, lambda it=item, lb=label: tip_text_for(it, lb))
         return btn
@@ -142,42 +137,59 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int) -> ttk.F
         parts.append(f"名称: {name}")
         # Attack (show breakdown if available)
         parts.append(f"攻击: {total_atk} (基础{base_atk} + 装备{eq_atk})")
-        parts.append(f"防御: {eq_def}")
+    # 卡面不显示防御数值
         parts.append(f"HP: {cur_hp}/{max_hp}")
         try:
             parts.append(f"AC: {ac if ac is not None else ac_val}")
         except Exception:
             parts.append(f"AC: {ac}")
         if True:
-            # 和卡面一致的六维行
+            # 六维在悬浮窗中用中文标签并纵向排列
             try:
-                keys = ['str','dex','con','int','wis','cha']
-                row_parts = []
-                for k in keys:
+                mapping = [
+                    ('str', '力量'),
+                    ('dex', '敏捷'),
+                    ('con', '体质'),
+                    ('int', '智力'),
+                    ('wis', '感知'),
+                    ('cha', '魅力'),
+                ]
+                lines = []
+                for key, zh in mapping:
                     v = None
                     if isinstance(attrs, dict):
-                        v = attrs.get(k, attrs.get(k.upper()))
-                    label = k.upper()
+                        v = attrs.get(key, attrs.get(key.upper()))
                     if v is None:
-                        row_parts.append(f"{label} -")
+                        lines.append(f"{zh} -")
                         continue
                     try:
                         iv = int(v)
                         mod = (iv - 10) // 2
-                        row_parts.append(f"{label} {iv}({mod:+d})")
+                        lines.append(f"{zh} {iv}({mod:+d})")
                     except Exception:
-                        row_parts.append(f"{label} {v}")
-                parts.append("属性: " + "  ".join(row_parts))
+                        lines.append(f"{zh} {v}")
+                if lines:
+                    parts.append("属性:")
+                    parts.extend(lines)
             except Exception:
                 if isinstance(attrs, dict) and attrs:
-                    parts.append("属性: " + ", ".join([f"{k.upper()}={v}" for k,v in attrs.items()]))
+                    parts.append("属性:")
+                    for k, v in attrs.items():
+                        parts.append(f"{k.upper()} {v}")
         eq_list = []
-        if left_item:
-            eq_list.append(f"左手: {getattr(left_item, 'name', '-')}")
-        if right_item_raw:
-            eq_list.append(f"右手: {getattr(right_item_raw, 'name', '-')}")
-        if armor_item:
-            eq_list.append(f"盔甲: {getattr(armor_item, 'name', '-')}")
+        # 在悬浮窗中仍然列出装备名称（如果存在）
+        try:
+            eq = getattr(m, 'equipment', None)
+            if eq:
+                if getattr(eq, 'left_hand', None):
+                    eq_list.append(f"左手: {getattr(eq.left_hand, 'name', '-')}")
+                if getattr(eq, 'right_hand', None):
+                    # 若左手为双手武器则 right_hand 可能为 None
+                    eq_list.append(f"右手: {getattr(eq.right_hand, 'name', '-')}")
+                if getattr(eq, 'armor', None):
+                    eq_list.append(f"盔甲: {getattr(eq.armor, 'name', '-')}")
+        except Exception:
+            pass
         if eq_list:
             parts.append("装备: " + ", ".join(eq_list))
         # This function intentionally mirrors a typical "s 5" style multiline summary.

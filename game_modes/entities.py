@@ -1,6 +1,6 @@
 """
-通用实体定义：Enemy、ResourceItem、Boss
-从 pve_multiplayer_game 中抽离，避免工厂与游戏模块的循环依赖。
+通用实体定义：Enemy、ResourceItem
+从旧多人模块中抽离，避免工厂与游戏模块的循环依赖。
 """
 
 from __future__ import annotations
@@ -48,23 +48,6 @@ class Enemy(Combatant):
     def on_death(self, game: "GameLike") -> None:
         if self.death_effect:
             self.death_effect(game)
-
-
-class Boss:
-    """Boss 单位（默认不反击）"""
-
-    def __init__(self, name: str = "终极Boss", hp: int = 100):
-        self.name = name
-        self.hp = hp
-        self.max_hp = hp
-        self.attack = 0
-
-    def take_damage(self, damage: int) -> bool:
-        self.hp -= damage
-        return self.hp <= 0
-
-    def __str__(self) -> str:  # pragma: no cover
-        return C.enemy(f"{self.name}({self.hp}/{self.max_hp})")
 
 
 # 仅用于类型提示，避免真正引入依赖

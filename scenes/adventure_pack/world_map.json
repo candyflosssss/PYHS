@@ -1,19 +1,23 @@
 {
   "title": "世界地图",
   "board": [
-    {"name": "战士·阿朗", "atk": 6, "hp": 14, "tags": ["warrior"],
+  {"name": "战士·阿朗", "atk": 6, "hp": 14, "profession": "warrior", "tags": ["warrior"],
+  "dnd": {"level": 3, "attrs": {"str":16, "dex":12, "con":14, "int":8, "wis":10, "cha":10}},
      "equipment": [{"type":"weapon","name":"双手巨剑","attack":6,"two_handed":true,"slot":"left_hand"}]},
-    {"name": "法师·伊莲", "atk": 8, "hp": 8, "tags": ["mage"], "passive": {"no_counter": true},
+  {"name": "法师·伊莲", "atk": 8, "hp": 8, "profession": "mage", "tags": ["mage"], "passive": {"no_counter": true},
+  "dnd": {"level": 3, "attrs": {"str":8, "dex":14, "con":12, "int":16, "wis":12, "cha":10}},
      "equipment": [
        {"type":"armor","name":"破旧法袍","defense":4},
        {"type":"weapon","name":"破旧法杖","attack":4,"two_handed":true,"slot":"left_hand"}
      ]},
-    {"name": "坦克·巴尔", "atk": 3, "hp": 18, "tags": ["tank"], "passive": {"taunt": true},
+  {"name": "坦克·巴尔", "atk": 3, "hp": 18, "profession": "tank", "tags": ["tank"], "passive": {"taunt": true},
+  "dnd": {"level": 3, "attrs": {"str":14, "dex":10, "con":16, "int":8, "wis":12, "cha":8}},
      "equipment": [
        {"type":"weapon","name":"单手战斧","attack":3,"slot":"right_hand"},
        {"type":"shield","name":"厚重圆盾","defense":6}
      ]},
-    {"name": "牧师·茜茜", "atk": 0, "hp": 12, "tags": ["healer"], "skills": [{"name": "治疗", "heal": 4}],
+  {"name": "牧师·茜茜", "atk": 0, "hp": 12, "profession": "priest", "tags": ["healer"],
+  "dnd": {"level": 3, "attrs": {"str":8, "dex":10, "con":12, "int":12, "wis":16, "cha":10}},
      "equipment": [{"type":"weapon","name":"闪亮法杖","attack":8,"two_handed":true,"slot":"left_hand"}]}
   ],
   "type": "main",

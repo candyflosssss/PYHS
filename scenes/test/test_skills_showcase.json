@@ -1,0 +1,77 @@
+{
+  "title": "技能与复杂场景综合测试",
+  "board": [
+    { "name": "战士A", "atk": 6, "hp": 18, "profession": "warrior", "tags": ["warrior"],
+      "dnd": {"level": 3, "attrs": {"str": 16, "dex": 12, "con": 14, "int": 8, "wis": 10, "cha": 10}},
+      "equip": {"items": [
+        {"type":"weapon","name":"钢剑","attack":4,"slot":"right_hand"},
+        {"type":"shield","name":"重盾","defense":3}
+      ]}
+    },
+    { "name": "战士B(双持)", "atk": 5, "hp": 17, "profession": "warrior", "tags": ["warrior"],
+      "dnd": {"level": 3, "attrs": {"str": 14, "dex": 14, "con": 12, "int": 8, "wis": 10, "cha": 10}},
+      "equip": {"items": [
+        {"type":"weapon","name":"短剑","attack":2,"slot":"left_hand"},
+        {"type":"weapon","name":"短剑","attack":2,"slot":"right_hand"}
+      ]}
+    },
+    { "name": "牧师C", "atk": 3, "hp": 16, "profession": "priest", "tags": ["healer","priest"],
+      "dnd": {"level": 3, "attrs": {"str": 8, "dex": 10, "con": 12, "int": 12, "wis": 14, "cha": 12}},
+      "equip": {"items": [
+        {"type":"armor","name":"皮甲","defense":2}
+      ]}
+    },
+    { "name": "法师D", "atk": 4, "hp": 14, "profession": "mage", "tags": ["mage"],
+      "dnd": {"level": 3, "attrs": {"str": 8, "dex": 12, "con": 12, "int": 16, "wis": 12, "cha": 10}}
+    },
+    { "name": "坦克E", "atk": 4, "hp": 22, "profession": "tank", "tags": ["tank"],
+      "dnd": {"level": 3, "attrs": {"str": 14, "dex": 10, "con": 16, "int": 8, "wis": 12, "cha": 12}},
+      "equip": {"items": [
+        {"type":"weapon","name":"巨剑","attack":5,"slot":"left_hand","two_handed":true},
+        {"type":"armor","name":"重甲","defense":3}
+      ]}
+    },
+    { "name": "游侠F", "atk": 5, "hp": 15, "tags": ["ranger"],
+      "dnd": {"level": 3, "attrs": {"str": 12, "dex": 16, "con": 12, "int": 10, "wis": 12, "cha": 10}}
+    },
+    { "name": "格斗家G", "atk": 6, "hp": 16, "tags": ["fighter"],
+      "dnd": {"level": 3, "attrs": {"str": 16, "dex": 12, "con": 12, "int": 8, "wis": 10, "cha": 10}},
+      "equip": {"items": [
+        {"type":"weapon","name":"钢剑","attack":4,"slot":"right_hand"}
+      ]}
+    },
+    { "name": "学者H", "atk": 3, "hp": 14, "tags": ["sage"],
+      "dnd": {"level": 3, "attrs": {"str": 8, "dex": 12, "con": 12, "int": 16, "wis": 14, "cha": 10}}
+    }
+  ],
+  "enemies": [
+    { "name": "盗贼(双持)", "hp": 20, "attack": 5, "tags": ["rogue"],
+      "dnd": {"level": 3, "attrs": {"str": 12, "dex": 16, "con": 12, "int": 10, "wis": 10, "cha": 10}},
+      "equip": {"items": [
+        {"type":"weapon","name":"匕首","attack":2,"slot":"left_hand"},
+        {"type":"weapon","name":"匕首","attack":2,"slot":"right_hand"}
+      ]}
+    },
+    { "name": "盾卫", "hp": 24, "attack": 4, "tags": ["guard"],
+      "dnd": {"level": 3, "attrs": {"str": 14, "dex": 10, "con": 14, "int": 8, "wis": 10, "cha": 8}},
+      "equip": {"items": [
+        {"type":"shield","name":"塔盾","defense":4},
+        {"type":"weapon","name":"短剑","attack":2,"slot":"right_hand"}
+      ]}
+    },
+    { "name": "术士", "hp": 18, "attack": 4, "tags": ["mage"],
+      "dnd": {"level": 3, "attrs": {"str": 8, "dex": 12, "con": 12, "int": 16, "wis": 12, "cha": 14}}
+    },
+    { "name": "狂战士", "hp": 26, "attack": 6, "tags": ["warrior"],
+      "dnd": {"level": 3, "attrs": {"str": 16, "dex": 12, "con": 16, "int": 8, "wis": 10, "cha": 10}},
+      "equip": {"items": [
+        {"type":"weapon","name":"巨斧","attack":6,"slot":"left_hand","two_handed":true}
+      ]}
+    }
+  ],
+  "resources": [
+    {"name":"生命药水","type":"potion","value":3},
+    {"name":"皮甲","type":"armor","value":2},
+    {"name":"铁剑","type":"weapon","value":3}
+  ]
+}

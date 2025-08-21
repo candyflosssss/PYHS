@@ -1,0 +1,51 @@
+{
+  "skills": [
+    {
+      "id": "sweep",
+      "name_cn": "横扫",
+      "name_en": "Sweep",
+      "desc": "对所有敌人造成基于攻击的群体伤害。",
+      "spec": { "team": "enemy", "select": "aoe", "predicates": ["is_alive","can_be_attacked"] }
+    },
+    {
+      "id": "basic_heal",
+      "name_cn": "治疗",
+      "name_en": "Basic Heal",
+      "desc": "治疗一个受伤的友方单位。",
+      "spec": { "team": "ally", "select": "single", "min_targets": 1, "max_targets": 1, "excludes_self": true, "predicates": ["is_alive","is_wounded"] }
+    },
+    {
+      "id": "drain",
+      "name_cn": "汲取",
+      "name_en": "Drain",
+      "desc": "对单体造成伤害并吸血。",
+      "spec": { "team": "enemy", "select": "single", "min_targets": 1, "max_targets": 1, "predicates": ["is_alive","can_be_attacked"] }
+    },
+    {
+      "id": "taunt",
+      "name_cn": "嘲讽",
+      "name_en": "Taunt",
+      "desc": "吸引仇恨。",
+      "spec": { "team": "self", "select": "none" }
+    },
+    {
+      "id": "arcane_missiles",
+      "name_cn": "奥术飞弹",
+      "name_en": "Arcane Missiles",
+      "desc": "对随机或指定敌人多段伤害。",
+      "spec": { "team": "enemy", "select": "single", "min_targets": 0, "max_targets": 1, "allow_random": true, "predicates": ["is_alive","can_be_attacked"] }
+    },
+    { "id": "power_slam", "name_cn": "力量猛击", "name_en": "Power Slam", "desc": "基于力量的重击。", "spec": { "team": "enemy", "select": "single", "min_targets": 1, "max_targets": 1, "predicates": ["is_alive","can_be_attacked"] } },
+    { "id": "bloodlust_priority", "name_cn": "血腥优先", "name_en": "Bloodlust Priority", "desc": "自动优先攻击残血目标。", "spec": { "team": "enemy", "select": "single", "min_targets": 0, "max_targets": 1, "allow_random": true, "predicates": ["is_alive","can_be_attacked"] } },
+    { "id": "execute_mage", "name_cn": "斩杀法师", "name_en": "Execute Mage", "desc": "对法师型目标造成高额伤害。", "spec": { "team": "enemy", "select": "single", "min_targets": 1, "max_targets": 1, "predicates": ["is_alive","can_be_attacked"] } },
+    { "id": "mass_intimidate", "name_cn": "群体恐吓", "name_en": "Mass Intimidate", "desc": "群体对抗检定，震慑敌人。", "spec": { "team": "enemy", "select": "aoe", "predicates": ["is_alive"] } },
+    { "id": "precise_strike", "name_cn": "精准打击", "name_en": "Precise Strike", "desc": "优势命中的精确打击。", "spec": { "team": "enemy", "select": "single", "min_targets": 1, "max_targets": 1, "predicates": ["is_alive","can_be_attacked"] } },
+    { "id": "disarm", "name_cn": "缴械", "name_en": "Disarm", "desc": "卸下目标武器并据为己有。", "spec": { "team": "enemy", "select": "single", "min_targets": 1, "max_targets": 1, "predicates": ["is_alive"] } },
+    { "id": "shield_breaker", "name_cn": "破盾", "name_en": "Shield Breaker", "desc": "破坏盾牌并造成额外伤害。", "spec": { "team": "enemy", "select": "single", "min_targets": 1, "max_targets": 1, "predicates": ["is_alive","can_be_attacked"] } },
+    { "id": "dual_wield_bane", "name_cn": "双刀克星", "name_en": "Dual-wield Bane", "desc": "针对双持目标的克星攻击。", "spec": { "team": "enemy", "select": "single", "min_targets": 1, "max_targets": 1, "predicates": ["is_alive","can_be_attacked"] } },
+    { "id": "mind_over_matter", "name_cn": "强于心智", "name_en": "Mind Over Matter", "desc": "用心智打击对手。", "spec": { "team": "enemy", "select": "single", "min_targets": 1, "max_targets": 1, "predicates": ["is_alive"] } },
+    { "id": "trial_of_wisdom", "name_cn": "智慧试炼", "name_en": "Trial of Wisdom", "desc": "以智取胜的试炼。", "spec": { "team": "enemy", "select": "single", "min_targets": 1, "max_targets": 1, "predicates": ["is_alive"] } },
+    { "id": "execute_wounded", "name_cn": "重伤补刀", "name_en": "Execute Wounded", "desc": "对重伤目标处决。", "spec": { "team": "enemy", "select": "single", "min_targets": 1, "max_targets": 1, "predicates": ["is_alive"] } },
+    { "id": "fair_distribution", "name_cn": "公平分配", "name_en": "Fair Distribution", "desc": "按总攻平分对群体伤害。", "spec": { "team": "enemy", "select": "aoe", "predicates": ["is_alive"] } }
+  ]
+}

@@ -10,6 +10,9 @@
 - `title|name`：展示标题
 - `parent|back_to`：返回上级场景（导航）
 - `on_clear`: { action: "transition", to: "xxx.json", preserve_board: true }
+- 进入行为覆盖（可选）：
+	- `refresh_board_on_enter`: true/false 进入本场景时是否刷新我方随从区（true 表示不保留旧随从）
+	- `preserve_board_on_enter`: true/false 进入本场景时是否保留我方随从区（若两者同时出现，则以 `refresh_board_on_enter` 优先）
 - `board[]`：我方随从（可含 `equip` 初始装备配置）
 - `enemies[]`：敌人（可含 `drops`、`on_death` 跳转）
 - `resources[]`：可拾取资源（weapon/armor/shield/potion/material）

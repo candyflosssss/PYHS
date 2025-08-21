@@ -1,0 +1,13 @@
+{
+  "title": "测试主地图",
+  "type": "main",
+  "board": [
+    {"name": "测试战士", "atk": 5, "hp": 16, "profession": "warrior"},
+    {"name": "测试牧师", "atk": 3, "hp": 14, "profession": "priest"}
+  ],
+  "enemies": [
+    {"name": "前往技能演示", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "skills.json", "preserve_board": true}},
+    {"name": "前往随机综合", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "generated_test_scene.json", "preserve_board": true}}
+  ],
+  "resources": []
+}

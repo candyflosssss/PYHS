@@ -1,7 +1,7 @@
 import os
 
 class GameDisplay:
-    """游戏界面显示器"""
+    """游戏界面显示器（通用 PvE 展示；已不区分多人/Boss）"""
     
     def __init__(self):
         self.width = 100  # 界面宽度
@@ -30,7 +30,7 @@ class GameDisplay:
     def _show_header(self, game_state):
         """显示顶部标题区域"""
         print("=" * self.width)
-        title = "COMOS 多人卡牌对战"
+        title = "COMOS 卡牌界面"
         print(title.center(self.width))
         
         phase_info = f"阶段: {game_state['phase']} | 回合: {game_state['turn']}"
@@ -103,17 +103,13 @@ class GameDisplay:
         return lines
     
     def _prepare_npc_area_lines(self, npc_zone, width):
-        """准备NPC区域内容行"""
+        """准备NPC区域内容行（无 Boss 特殊标记）"""
         lines = []
         
         npcs = npc_zone.get('npcs', [])
         difficulty = npc_zone.get('difficulty', 1)
-        boss_present = npc_zone.get('boss_present', False)
         
         lines.append(f"难度等级: {difficulty}")
-        
-        if boss_present:
-            lines.append("*** BOSS已出现! ***")
         
         lines.append("")
         

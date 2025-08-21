@@ -295,7 +295,7 @@ class SimplePvEController:
                 self._print("\n".join(out_lines))
             if should_exit:
                 break
-        # 结束输出（场景模式无英雄HP/Boss，这里仅打印退出）
+    # 结束输出（场景模式：仅打印退出）
         self._print('游戏结束')
 
     def _process_command(self, cmd_line: str):
@@ -768,7 +768,6 @@ class SimplePvEController:
                     lines.extend(self._format_token_list(pairs))
                 else:
                     lines.append('  (无)')
-                # 无 Boss 区
                 return lines, False
             try:
                 # 支持数字或 mN 两种形式
@@ -778,30 +777,6 @@ class SimplePvEController:
                 else:
                     m_idx = int(first) - 1
                 tgt = args[1]
-                # healer: 允许 a mA mB 作为对友方的治疗（攻击即治疗）
-                if tgt.startswith('m'):
-                    try:
-                        m_tgt = int(tgt[1:]) - 1
-                        board = self.game.player.board
-                        if not (0 <= m_idx < len(board) and 0 <= m_tgt < len(board)):
-                            return ['友方目标不存在'], False
-                        healer = board[m_idx]
-                        ally = board[m_tgt]
-                        from systems import skills as SK
-                        if not SK.is_healer(healer):
-                            return ['该随从不是治疗者，无法对友方使用攻击治疗'], False
-                        heal_amount = SK.get_heal_amount(healer, getattr(healer, 'attack', 0))
-                        prev = ally.hp
-                        ally.heal(heal_amount)
-                        gain = ally.hp - prev
-                        attempt = f"{self.game.player.name} 的队伍#{m_idx+1} 治疗 我方 m{m_tgt+1}"
-                        self._record(f"{attempt} -> 恢复 {gain}")
-                        self.info = [f"{attempt} -> 恢复 {gain}"]
-                        # 展示完整视图
-                        out.append(self._render_full_view())
-                        return out, False
-                    except ValueError:
-                        return ['友方目标格式 mN (如 m1)'], False
                 if tgt.startswith('e'):
                     try:
                         e_idx = int(tgt[1:]) - 1
@@ -821,9 +796,6 @@ class SimplePvEController:
                     except ValueError:
                         out.extend(['敌人格式 eN (如 e1)', '示例: a m1 e1 或 a 1 e1'])
                         return out, False
-                elif tgt == 'boss':
-                    out.append('当前模式无 Boss 区')
-                    return out, False
                 else:
                     out.extend(['目标格式: eN (如 e1)', '示例: a m1 e1 或 a 1 e1'])
                     return out, False
@@ -998,10 +970,6 @@ class SimplePvEController:
                 return enemies[idx] if 0 <= idx < len(enemies) else None
             except Exception:
                 return None
-        # Boss
-        # 场景模式无 Boss
-        if token == 'boss':
-            return None
         # 我方随从: m1/m2...
         if token.startswith('m'):
             try:
@@ -1021,7 +989,6 @@ class SimplePvEController:
             lines.append(C.label('敌人:'))
             epairs = [(f"e{i}", str(e)) for i, e in enumerate(enemies, 1)]
             lines.extend(self._format_token_list(epairs))
-    # 场景模式无 Boss
         # 我方队伍
         board = self.game.player.board
         if board:
@@ -1045,7 +1012,3 @@ class SimplePvEController:
 def start_simple_pve_game(name: str | None = None, scene: str | None = None):
     controller = SimplePvEController(player_name=name, initial_scene=scene)
     controller.loop()
-
-# 兼容旧入口：主程序调用的多人PvE入口名
-def start_pve_multiplayer_game(name: str | None = None, scene: str | None = None):
-    start_simple_pve_game(name=name, scene=scene)

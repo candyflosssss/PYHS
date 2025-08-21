@@ -1,7 +1,7 @@
 {
   "board": [
-    {"name": "张伟", "atk": 8, "hp": 8},
-    {"name": "陈杰", "atk": 6, "hp": 14}
+  {"name": "张伟", "atk": 8, "hp": 8, "profession": "warrior"},
+  {"name": "陈杰", "atk": 6, "hp": 14, "profession": "priest"}
   ],
   "enemies": [
   {"name": "未上锁的木门", "attack": 0, "hp": 2, "on_death": {"action": "transition", "to": "scene_2.json", "preserve_board": true}},

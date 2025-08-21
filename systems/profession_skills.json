@@ -1,6 +1,6 @@
 {
-  "warrior": ["sweep","drain"],
-  "priest": ["basic_heal"],
-  "tank": ["taunt"],
-  "mage": ["arcane_missiles"]
+  "warrior": ["sweep", "power_slam", "precise_strike", "shield_breaker"],
+  "priest": ["basic_heal", "trial_of_wisdom"],
+  "tank": ["taunt", "mass_intimidate"],
+  "mage": ["arcane_missiles", "mind_over_matter", "execute_mage"]
 }

@@ -17,6 +17,9 @@ from . import ui_utils as U
 from . import cards as tk_cards
 from . import resources as tk_resources
 from . import operations as tk_operations
+from ui.targeting.specs import DEFAULT_SPECS, SkillTargetSpec
+from ui.targeting.fsm import TargetingEngine
+# Inline 选择：不使用弹窗选择器
 
 try:
 	from main import load_config, save_config, discover_packs, _pick_default_main  # type: ignore
@@ -44,6 +47,18 @@ class GameTkApp:
 		self._border_default = 3
 		self._border_selected_enemy = 3
 		self._border_selected_member = 3
+		# 高亮风格（可调色）：候选与选中分别有描边与浅底色
+		self._wrap_bg_default = self.root.cget('bg')
+		self.HL = {
+			'cand_enemy_border': '#FAD96B',  # 候选敌人描边（亮黄）
+			'cand_enemy_bg':     '#FFF7CC',  # 候选敌人底色（浅黄）
+			'cand_ally_border':  '#7EC6F6',  # 候选友方描边（亮蓝）
+			'cand_ally_bg':      '#E6F4FF',  # 候选友方底色（浅蓝）
+			'sel_enemy_border':  '#FF4D4F',  # 选中敌人描边（醒目红）
+			'sel_enemy_bg':      '#FFE6E6',  # 选中敌人底色（淡红）
+			'sel_ally_border':   '#1E90FF',  # 选中友方描边（深蓝）
+			'sel_ally_bg':       '#D6EBFF',  # 选中友方底色（淡蓝）
+		}
 
 		# Containers
 		self.frame_menu = ttk.Frame(self.root)
@@ -83,12 +98,12 @@ class GameTkApp:
 		try:
 			for w in list(getattr(self, 'enemy_card_wraps', {}).values()):
 				try:
-					w.configure(highlightbackground="#cccccc", highlightthickness=self._border_default)
+					w.configure(highlightbackground="#cccccc", highlightthickness=self._border_default, background=self._wrap_bg_default)
 				except Exception:
 					pass
 			for w in list(getattr(self, 'card_wraps', {}).values()):
 				try:
-					w.configure(highlightbackground="#cccccc", highlightthickness=self._border_default)
+					w.configure(highlightbackground="#cccccc", highlightthickness=self._border_default, background=self._wrap_bg_default)
 				except Exception:
 					pass
 		except Exception as e:
@@ -276,6 +291,13 @@ class GameTkApp:
 		self.enemy_cards_container.pack(fill=tk.X, expand=False, padx=4, pady=4)
 		self.enemy_card_wraps = {}
 		self.selected_enemy_index = None
+		# 技能/目标选择状态
+		self.selected_skill = None            # 模式：'attack'/'heal'/...
+		self.selected_skill_name = None       # 技能名字，例如 'attack'|'basic_heal'|'drain'
+		self.skill_target_index = None        # 目标索引（整数）
+		self.skill_target_token = None        # 目标 token: eN/mN
+		# 统一目标选择引擎
+		self.target_engine = TargetingEngine(self)
 
 		# 中部主体（资源与背包并排，信息与日志置于底部并排）
 		body = ttk.Frame(parent)
@@ -418,6 +440,36 @@ class GameTkApp:
 		# 卡片
 		self._render_enemy_cards()
 		self._render_cards()
+		# 重新应用选择与技能目标高亮，避免刷新导致失焦
+		try:
+			if self.selected_enemy_index and self.selected_enemy_index in self.enemy_card_wraps:
+				self.enemy_card_wraps[self.selected_enemy_index].configure(highlightbackground=self.HL['sel_enemy_border'], background=self.HL['sel_enemy_bg'], highlightthickness=self._border_selected_enemy)
+			if self.selected_member_index and self.selected_member_index in self.card_wraps:
+				self.card_wraps[self.selected_member_index].configure(highlightbackground=self.HL['sel_ally_border'], background=self.HL['sel_ally_bg'], highlightthickness=self._border_selected_member)
+			# 技能模式底色
+			if getattr(self, 'selected_skill', None) == 'attack':
+				for idx, wrap in self.enemy_card_wraps.items():
+					wrap.configure(highlightbackground=self.HL['cand_enemy_border'], background=self.HL['cand_enemy_bg'])
+			if getattr(self, 'selected_skill', None) == 'heal':
+				for idx, wrap in self.card_wraps.items():
+					wrap.configure(highlightbackground=self.HL['cand_ally_border'], background=self.HL['cand_ally_bg'])
+			# 已选择具体目标则加强高亮
+			if getattr(self, 'skill_target_token', None):
+				tok = self.skill_target_token
+				if isinstance(tok, str) and len(tok) >= 2:
+					try:
+						if tok[0] == 'e':
+							i = int(tok[1:])
+							if i in self.enemy_card_wraps:
+								self.enemy_card_wraps[i].configure(highlightbackground=self.HL['sel_enemy_border'], background=self.HL['sel_enemy_bg'], highlightthickness=self._border_selected_enemy)
+						elif tok[0] == 'm':
+							i = int(tok[1:])
+							if i in self.card_wraps:
+								self.card_wraps[i].configure(highlightbackground=self.HL['sel_ally_border'], background=self.HL['sel_ally_bg'], highlightthickness=self._border_selected_member)
+					except Exception:
+						pass
+		except Exception:
+			pass
 
 	def _render_enemy_cards(self):
 		# 敌人卡片区仅通过卡片展示（顶部）
@@ -458,7 +510,7 @@ class GameTkApp:
 	def _create_enemy_card(self, parent: tk.Widget, e, e_index: int) -> ttk.Frame:
 		# Reuse the unified character card renderer so enemies and characters share the same UI.
 		try:
-			return tk_cards.create_character_card(self, parent, e, e_index)
+			return tk_cards.create_character_card(self, parent, e, e_index, is_enemy=True)
 		except Exception:
 			# Fallback: minimal frame if shared renderer fails
 			frame = ttk.Frame(parent, relief='ridge', padding=4)
@@ -466,84 +518,208 @@ class GameTkApp:
 			return frame
 
 	def _select_skill(self, m_index: int, skill_type: str):
-		# 选择技能后高亮可用目标
+		# 选择技能后高亮可用目标（不立即执行）
 		self.selected_skill = skill_type
+		self.skill_target_index = None
+		self.skill_target_token = None
 		if skill_type == "attack":
 			# 高亮可攻击敌人
 			for idx, wrap in self.enemy_card_wraps.items():
 				e = getattr(self.controller.game, 'enemies', [])[idx-1] if hasattr(self.controller.game, 'enemies') else None
 				can_attack = getattr(e, 'can_be_attacked', True)
-				color = "#ffecb3" if can_attack else "#cccccc"
-				wrap.configure(highlightbackground=color)
+				if can_attack:
+					wrap.configure(highlightbackground=self.HL['cand_enemy_border'], background=self.HL['cand_enemy_bg'])
+				else:
+					wrap.configure(highlightbackground="#cccccc", background=self._wrap_bg_default)
 		elif skill_type == "heal":
 			# 高亮可治疗队友（HP未满且不是自己）
 			for idx, wrap in self.card_wraps.items():
 				m = getattr(self.controller.game.player, 'board', [])[idx-1] if hasattr(self.controller.game.player, 'board') else None
 				can_heal = m and getattr(m, 'hp', 0) < getattr(m, 'max_hp', 0) and idx != m_index
-				color = "#b3e5fc" if can_heal else "#cccccc"
-				wrap.configure(highlightbackground=color)
-		# 技能选择后，点击目标执行技能
-		self.skill_target_index = None
+				if can_heal:
+					wrap.configure(highlightbackground=self.HL['cand_ally_border'], background=self.HL['cand_ally_bg'])
+				else:
+					wrap.configure(highlightbackground="#cccccc", background=self._wrap_bg_default)
+		# 展示确认/取消
+		try:
+			self._render_operations()
+		except Exception:
+			pass
+		# 同时弹出统一目标选择器，避免混乱
+		try:
+			self._open_target_picker(skill_type, m_index)
+		except Exception:
+			pass
 
-	def _on_enemy_card_click(self, idx: int):
-		# 技能选择后点击敌人执行攻击
-		if hasattr(self, 'selected_skill') and self.selected_skill == "attack":
-			m_idx = self.selected_member_index or 1
-			e_token = f"e{idx}"
-			m_token = f"m{m_idx}"
-			# 根据可能的技能上下文，决定命令
-			sk = getattr(self, 'skill_target_index', None)
-			# drain / arcane_missiles 通过 skill 命令执行
-			if hasattr(self, 'selected_skill_name') and self.selected_skill_name in ('drain','arcane_missiles'):
-				out = self._send(f"skill {self.selected_skill_name} {m_token} {e_token}")
-			else:
-				out = self._send(f"a {m_token} {e_token}")
+	def begin_skill(self, m_index: int, name: str):
+		"""统一技能入口：根据 skill_specs 决定目标要求并引导 UI。
+		使用 TargetingEngine 与默认规格 DEFAULT_SPECS。
+		"""
+		self.selected_member_index = m_index
+		self.selected_skill_name = name
+		src = f"m{m_index}"
+		need_exec = self.target_engine.begin(src, name)
+		if need_exec:
+			# 无需目标（self/aoe），直接执行
+			out = self._send(f"skill {name} {src}")
 			try:
-				resp = out[0] if isinstance(out, (list, tuple)) and len(out) > 0 else out  # Get response
+				resp = out[0] if isinstance(out, (list, tuple)) and len(out) > 0 else out
 			except Exception:
 				resp = out
 			self._after_cmd(resp)
+			return
+		# 在主界面进行目标选择：高亮候选，并在操作栏渲染内联候选按钮
+		self._update_target_highlights()
+		try:
+			self._render_operations()
+		except Exception:
+			pass
+
+	def _confirm_skill(self):
+		"""执行已选择的技能（或普通攻击）并清理状态。"""
+		try:
+			if not self.selected_member_index:
+				return
+			name = getattr(self, 'selected_skill_name', None)
+			src = f"m{self.selected_member_index}"
+			# 优先从 TargetingEngine 读取选择
+			selected = []
+			try:
+				if getattr(self, 'target_engine', None) and self.target_engine.is_ready():
+					selected = self.target_engine.get_selected()
+			except Exception:
+				selected = []
+			# 兼容旧路径（例如 on_attack 直接设置的 token）
+			if not selected and getattr(self, 'skill_target_token', None):
+				selected = [self.skill_target_token]
+			# attack/heal 的直达命令
+			if name in (None, 'attack') and selected:
+				out = self._send(f"a {src} {selected[0]}")
+			elif name == 'basic_heal' and selected:
+				out = self._send(f"heal {src} {selected[0]}")
+			else:
+				# 通用 skill
+				if selected:
+					out = self._send(" ".join(["skill", name or "", src] + selected).strip())
+				else:
+					out = self._send(f"skill {name} {src}")
+			try:
+				resp = out[0] if isinstance(out, (list, tuple)) and len(out) > 0 else out
+			except Exception:
+				resp = out
+			self._after_cmd(resp)
+		finally:
 			self.selected_skill = None
 			self.selected_skill_name = None
-			return
+			self.skill_target_index = None
+			self.skill_target_token = None
+			try:
+				self.target_engine.reset()
+			except Exception:
+				pass
+			try:
+				self._reset_highlights()
+				self._render_operations()
+			except Exception:
+				pass
+
+	def _toggle_target_token(self, token: str):
+		"""在主界面点击候选或卡片时切换选择，并局部更新高亮与操作栏。"""
+		try:
+			if not getattr(self, 'target_engine', None) or not getattr(self.target_engine, 'ctx', None):
+				return
+			ctx = self.target_engine.ctx
+			if token in (ctx.selected or set()):
+				self.target_engine.unpick(token)
+			else:
+				self.target_engine.pick(token)
+			self._update_target_highlights()
+			self._render_operations()
+		except Exception:
+			pass
+
+	def _update_target_highlights(self):
+		"""根据 TargetingEngine 的候选/已选，在卡片与敌人卡上应用高亮，不触发整页刷新。"""
+		try:
+			self._reset_highlights()
+			ctx = getattr(self, 'target_engine', None) and self.target_engine.ctx
+			if not ctx:
+				return
+			cands = set(ctx.candidates or [])
+			sel = set(ctx.selected or [])
+			# 敌人卡
+			for idx, wrap in (self.enemy_card_wraps or {}).items():
+				tok = f"e{idx}"
+				if tok in sel:
+					wrap.configure(highlightbackground=self.HL['sel_enemy_border'], background=self.HL['sel_enemy_bg'], highlightthickness=self._border_selected_enemy)
+				elif tok in cands:
+					wrap.configure(highlightbackground=self.HL['cand_enemy_border'], background=self.HL['cand_enemy_bg'])
+			# 我方卡
+			for idx, wrap in (self.card_wraps or {}).items():
+				tok = f"m{idx}"
+				if tok in sel:
+					wrap.configure(highlightbackground=self.HL['sel_ally_border'], background=self.HL['sel_ally_bg'], highlightthickness=self._border_selected_member)
+				elif tok in cands:
+					wrap.configure(highlightbackground=self.HL['cand_ally_border'], background=self.HL['cand_ally_bg'])
+		except Exception:
+			pass
+			try:
+				self._render_operations()
+			except Exception:
+				pass
+
+	def _cancel_skill(self):
+		self.selected_skill = None
+		self.selected_skill_name = None
+		self.skill_target_index = None
+		self.skill_target_token = None
+		try:
+			self._reset_highlights()
+			self._render_operations()
+		except Exception:
+			pass
+
+	def _on_enemy_card_click(self, idx: int):
+		# 若处于目标选择会话，走内联切换；否则保留旧行为
+		try:
+			if getattr(self, 'target_engine', None) and getattr(self.target_engine, 'ctx', None):
+				self._toggle_target_token(f"e{idx}")
+				return
+		except Exception:
+			pass
 		prev = getattr(self, 'selected_enemy_index', None)
 		if prev and prev in getattr(self, 'enemy_card_wraps', {}):
 			try:
-				self.enemy_card_wraps[prev].configure(highlightbackground="#cccccc", highlightthickness=self._border_default)
+				self.enemy_card_wraps[prev].configure(highlightbackground="#cccccc", highlightthickness=self._border_default, background=self._wrap_bg_default)
 			except Exception:
 				pass
 		self.selected_enemy_index = idx
 		try:
 			w = self.enemy_card_wraps.get(idx)
 			if w:
-				w.configure(highlightbackground="#FF6347", highlightthickness=self._border_selected_enemy)
+				w.configure(highlightbackground=self.HL['sel_enemy_border'], background=self.HL['sel_enemy_bg'], highlightthickness=self._border_selected_enemy)
 		except Exception:
 			pass
 
 	def _on_card_click(self, idx: int):
-		# 技能选择后点击队友执行治疗
-		if hasattr(self, 'selected_skill') and self.selected_skill == "heal":
-			m_idx = self.selected_member_index or 1
-			tgt_token = f"m{idx}"
-			out = self._send(f"heal m{m_idx} {tgt_token}")
-			try:
-				resp = out[0] if (isinstance(out, (list, tuple)) and len(out) > 0) else out
-			except Exception:
-				resp = out
-			self._after_cmd(resp)
-			self.selected_skill = None
-			return
+		# 若处于目标选择会话，走内联切换；否则保留旧行为
+		try:
+			if getattr(self, 'target_engine', None) and getattr(self.target_engine, 'ctx', None):
+				self._toggle_target_token(f"m{idx}")
+				return
+		except Exception:
+			pass
 		prev = getattr(self, 'selected_member_index', None)
 		if prev and prev in getattr(self, 'card_wraps', {}):
 			try:
-				self.card_wraps[prev].configure(highlightbackground="#cccccc", highlightthickness=self._border_default)
+				self.card_wraps[prev].configure(highlightbackground="#cccccc", highlightthickness=self._border_default, background=self._wrap_bg_default)
 			except Exception:
 				pass
 		self.selected_member_index = idx
 		try:
 			w = self.card_wraps.get(idx)
 			if w:
-				w.configure(highlightbackground="#1E90FF", highlightthickness=self._border_selected_member)
+				w.configure(highlightbackground=self.HL['sel_ally_border'], background=self.HL['sel_ally_bg'], highlightthickness=self._border_selected_member)
 		except Exception:
 			pass
 		# 更新操作栏
@@ -1114,18 +1290,109 @@ class GameTkApp:
 		if not self.selected_member_index:
 			messagebox.showinfo("提示", "请先在底部卡片选择一名队员(mN)")
 			return
-		if self.selected_enemy_index:
-			e_token = f"e{self.selected_enemy_index}"
+		# 统一入口
+		self.begin_skill(self.selected_member_index, 'attack')
+
+	def _open_target_picker(self, mode: str, m_index: int):
+		"""统一目标选择器：弹窗列出可用目标，确认后设置 skill_target 并调用确认。
+		mode: 'attack' | 'heal'
+		"""
+		# 收集候选
+		candidates = []  # list[(token, label)]
+		if mode == 'attack':
+			enemies = getattr(self.controller.game, 'enemies', []) or []
+			for i, e in enumerate(enemies, start=1):
+				try:
+					if not getattr(e, 'can_be_attacked', True):
+						continue
+					name = getattr(e, 'display_name', None) or getattr(e, 'name', f'敌人#{i}')
+					hp = int(getattr(e, 'hp', 0))
+					mx = int(getattr(e, 'max_hp', hp))
+					if hp <= 0:
+						continue
+					candidates.append((f"e{i}", f"e{i}  {name}  HP {hp}/{mx}"))
+				except Exception:
+					candidates.append((f"e{i}", f"e{i}"))
+		elif mode == 'heal':
+			board = getattr(self.controller.game.player, 'board', []) or []
+			for i, m in enumerate(board, start=1):
+				try:
+					if i == m_index:
+						continue
+					hp = int(getattr(m, 'hp', 0))
+					mx = int(getattr(m, 'max_hp', hp))
+					if hp >= mx:
+						continue
+					if hp <= 0:
+						continue
+					name = getattr(m, 'display_name', None) or getattr(m, 'name', f'队员#{i}')
+					candidates.append((f"m{i}", f"m{i}  {name}  HP {hp}/{mx}"))
+				except Exception:
+					candidates.append((f"m{i}", f"m{i}"))
 		else:
-			messagebox.showinfo("提示", "请在顶部敌人卡上选择一个敌人(eN)")
 			return
-		m_token = f"m{self.selected_member_index}"
-		out = self._send(f"a {m_token} {e_token}")
+		if not candidates:
+			messagebox.showinfo("提示", "没有可用的目标")
+			return
+		# 弹窗
 		try:
-			resp = out[0] if isinstance(out, (list, tuple)) and len(out) > 0 else out
+			if getattr(self, '_target_picker', None):
+				try:
+					self._target_picker.destroy()
+				except Exception:
+					pass
+				self._target_picker = None
 		except Exception:
-			resp = out
-		self._after_cmd(resp)
+			pass
+		top = tk.Toplevel(self.root)
+		top.title("选择目标")
+		top.transient(self.root)
+		top.grab_set()
+		self._target_picker = top
+		frm = ttk.Frame(top, padding=10)
+		frm.pack(fill=tk.BOTH, expand=True)
+		lbl = ttk.Label(frm, text=("选择攻击目标" if mode == 'attack' else "选择治疗目标"))
+		lbl.pack(anchor=tk.W)
+		lb = tk.Listbox(frm, height=min(10, len(candidates)))
+		for _, label in candidates:
+			lb.insert(tk.END, label)
+		lb.pack(fill=tk.BOTH, expand=True, pady=6)
+		lb.select_set(0)
+		btns = ttk.Frame(frm)
+		btns.pack(fill=tk.X)
+		def do_ok(evt=None):
+			sel = lb.curselection()
+			if not sel:
+				return
+			idx = sel[0]
+			tok = candidates[idx][0]
+			self.skill_target_token = tok
+			# 同步 card wrap 的直观高亮（若能映射）
+			try:
+				if tok.startswith('e'):
+					self.selected_enemy_index = int(tok[1:])
+				elif tok.startswith('m'):
+					self.selected_member_index = m_index
+			except Exception:
+				pass
+			try:
+				top.destroy()
+				self._target_picker = None
+			except Exception:
+				pass
+			# 立即执行（会根据当前 selected_skill_name 走攻击/治疗/通用技能分支）
+			self._confirm_skill()
+		def do_cancel():
+			try:
+				top.destroy()
+				self._target_picker = None
+			except Exception:
+				pass
+		ok = ttk.Button(btns, text="确定", command=do_ok)
+		ok.pack(side=tk.LEFT, expand=True, fill=tk.X)
+		cc = ttk.Button(btns, text="取消", command=do_cancel)
+		cc.pack(side=tk.RIGHT, expand=True, fill=tk.X)
+		lb.bind('<Double-Button-1>', do_ok)
 
 	def on_pick(self):
 		if not self.controller:
@@ -1275,7 +1542,63 @@ class GameTkApp:
 			self._reset_highlights()
 		except Exception as e:
 			self._log_exception(e, '_after_cmd_reset')
-		self.refresh_all(skip_info_log=True)
+		# 仅局部刷新：战场（敌人/队友卡片）与操作栏，避免整页重绘导致失焦
+		try:
+			self.refresh_battlefield_only()
+		except Exception:
+			# 兜底使用完整刷新
+			self.refresh_all(skip_info_log=True)
+
+	def refresh_battlefield_only(self):
+		"""仅刷新敌人与我方卡片以及操作栏，尽量保留资源/背包与日志区域不变。
+		并在重绘后恢复选中/技能候选高亮，避免失焦。
+		"""
+		if self.mode != 'game' or not self.controller:
+			return
+		# 仅卡片
+		self._render_enemy_cards()
+		self._render_cards()
+		# 目标选择会话的重验证，避免因死亡/阵列变化导致的残留
+		try:
+			if getattr(self, 'target_engine', None):
+				self.target_engine.revalidate()
+				self._update_target_highlights()
+		except Exception:
+			pass
+		# 恢复高亮（非目标模式的选中）
+		try:
+			if self.selected_enemy_index and self.selected_enemy_index in self.enemy_card_wraps:
+				self.enemy_card_wraps[self.selected_enemy_index].configure(highlightbackground=self.HL['sel_enemy_border'], background=self.HL['sel_enemy_bg'], highlightthickness=self._border_selected_enemy)
+			if self.selected_member_index and self.selected_member_index in self.card_wraps:
+				self.card_wraps[self.selected_member_index].configure(highlightbackground=self.HL['sel_ally_border'], background=self.HL['sel_ally_bg'], highlightthickness=self._border_selected_member)
+			# 技能模式底色
+			if getattr(self, 'selected_skill', None) == 'attack':
+				for idx, wrap in self.enemy_card_wraps.items():
+					wrap.configure(highlightbackground=self.HL['cand_enemy_border'], background=self.HL['cand_enemy_bg'])
+			if getattr(self, 'selected_skill', None) == 'heal':
+				for idx, wrap in self.card_wraps.items():
+					wrap.configure(highlightbackground=self.HL['cand_ally_border'], background=self.HL['cand_ally_bg'])
+			# 已选具体目标高亮
+			if getattr(self, 'skill_target_token', None):
+				try:
+					tok = self.skill_target_token
+					if tok.startswith('e'):
+						i = int(tok[1:])
+						if i in self.enemy_card_wraps:
+							self.enemy_card_wraps[i].configure(highlightbackground=self.HL['sel_enemy_border'], background=self.HL['sel_enemy_bg'], highlightthickness=self._border_selected_enemy)
+					elif tok.startswith('m'):
+						i = int(tok[1:])
+						if i in self.card_wraps:
+							self.card_wraps[i].configure(highlightbackground=self.HL['sel_ally_border'], background=self.HL['sel_ally_bg'], highlightthickness=self._border_selected_member)
+				except Exception:
+					pass
+		except Exception:
+			pass
+		# 操作栏
+		try:
+			self._render_operations()
+		except Exception:
+			pass
 
 	# -------- Mode --------
 	def _start_game(self, player_name: str, initial_scene: Optional[str]):

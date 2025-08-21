@@ -245,7 +245,8 @@ def main():
                 cfg['last_scene'] = _pick_default_main(mains)
                 save_config(cfg)
             start_scene_path = (pack_id + '/' if pack_id else '') + cfg.get('last_scene', 'default_scene.json')
-            start_pve_multiplayer_game(name=cfg.get('name'), scene=start_scene_path)
+            from game_modes.pve_controller import start_simple_pve_game as pve_start
+            pve_start(name=cfg.get('name'), scene=start_scene_path)
             break
 
         elif choice == '2':
@@ -305,12 +306,7 @@ def main():
             input("按回车返回菜单...")
 
 
-def start_pve_multiplayer_game(name=None, scene=None):
-    try:
-        from game_modes.pve_controller import start_pve_multiplayer_game as pve_start
-    except ImportError:
-        from game_modes.pve_controller import start_simple_pve_game as pve_start
-    pve_start(name=name, scene=scene)
+# 旧的多人别名入口已移除，仅保留单人 PvE 入口
 
 
 if __name__ == "__main__":

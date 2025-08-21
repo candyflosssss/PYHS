@@ -70,6 +70,19 @@ class SimplePvEGame:
             'drain': self._skill_drain,
             'taunt': self._skill_taunt,
             'arcane_missiles': self._skill_arcane_missiles,
+            # 新增技能（英文 key，对应外置 JSON 的 id）
+            'power_slam': self._skill_power_slam,
+            'bloodlust_priority': self._skill_bloodlust_priority,
+            'execute_mage': self._skill_execute_mage,
+            'mass_intimidate': self._skill_mass_intimidate,
+            'precise_strike': self._skill_precise_strike,
+            'disarm': self._skill_disarm,
+            'shield_breaker': self._skill_shield_breaker,
+            'dual_wield_bane': self._skill_dual_wield_bane,
+            'mind_over_matter': self._skill_mind_over_matter,
+            'trial_of_wisdom': self._skill_trial_of_wisdom,
+            'execute_wounded': self._skill_execute_wounded,
+            'fair_distribution': self._skill_fair_distribution,
         }
 
     # 调试用：返回内部候选场景根（按优先级）
@@ -130,16 +143,34 @@ class SimplePvEGame:
             return False
         scene_path = scene_name_or_path
         if not os.path.isabs(scene_path):
-            # 首先尝试基于 scenes 根目录
-            candidate = os.path.join(self._scene_base_dir, scene_name_or_path)
-            candidate = os.path.abspath(candidate)
-            # 若不存在且当前场景已知，则基于当前场景所在目录回退解析（支持地图组内相对切换）
-            if not os.path.exists(candidate) and self.current_scene:
+            # 统一标准化分隔符并去掉可能的前导 scenes/ 或 yyy/scenes/
+            norm = scene_name_or_path.replace('\\', '/').lstrip('/')
+            for pref in ('scenes/', 'yyy/scenes/'):
+                if norm.startswith(pref):
+                    norm = norm[len(pref):]
+                    break
+            # 多根查找：_scene_base_dir 以及候选根(_debug_scene_candidates)
+            roots = []
+            try:
+                roots = [self._scene_base_dir]
+                for p in self._debug_scene_candidates():
+                    ap = os.path.abspath(p)
+                    if ap not in roots and os.path.isdir(ap):
+                        roots.append(ap)
+            except Exception:
+                roots = [self._scene_base_dir]
+            found = None
+            for r in roots:
+                cand = os.path.abspath(os.path.join(r, norm))
+                if os.path.exists(cand):
+                    found = cand
+                    break
+            if not found and self.current_scene:
                 cur_dir = os.path.dirname(os.path.abspath(self.current_scene))
-                alt = os.path.abspath(os.path.join(cur_dir, scene_name_or_path))
-                scene_path = alt if os.path.exists(alt) else candidate
-            else:
-                scene_path = candidate
+                alt = os.path.abspath(os.path.join(cur_dir, norm))
+                if os.path.exists(alt):
+                    found = alt
+            scene_path = found or os.path.abspath(os.path.join(self._scene_base_dir, norm))
         else:
             scene_path = os.path.abspath(scene_path)
         data = {}
@@ -181,8 +212,20 @@ class SimplePvEGame:
         except Exception:
             self._scene_meta = None
 
+        # 清空/保留：允许场景文件通过 refresh_board_on_enter 或 preserve_board_on_enter 覆盖
+        eff_keep = keep_board
+        try:
+            if 'refresh_board_on_enter' in data:
+                # True 表示进入本场景时刷新随从区（不保留旧随从）
+                eff_keep = not bool(data.get('refresh_board_on_enter'))
+            elif 'preserve_board_on_enter' in data:
+                # True 表示进入本场景时保留随从区
+                eff_keep = bool(data.get('preserve_board_on_enter'))
+        except Exception:
+            pass
+
         # 清空/保留
-        preserved_board = list(self.player.board) if keep_board else []
+        preserved_board = list(self.player.board) if eff_keep else []
         self.enemies = []
         self.resources = []
         self.player.board.clear()
@@ -201,7 +244,7 @@ class SimplePvEGame:
                 self.resources.append(r)
 
         # 我方随从
-        if keep_board and preserved_board:
+        if eff_keep and preserved_board:
             # 保留旧随从，忽略新场景 board
             self.player.board.extend(preserved_board)
         else:
@@ -282,15 +325,24 @@ class SimplePvEGame:
                 cs = CharacterSheet(name, level=int(dnd.get('level', 1) or 1))
                 cs.attrs = A
                 cs.bonuses = dict(dnd.get('bonuses', {}))
-                if dnd.get('ac') is not None:
-                    cs.ac = int(dnd.get('ac'))
+                # Do not accept AC from JSON; compute from attributes + equipment defense
+                # AC = 10 + dex_mod + defense
+                # dex modifier will be computed below once attrs are available
             else:
                 cs = CharacterSheet(name)
             # 若未指定 AC，则用 10 + defense 做基础
             try:
                 dfn = int(entity.get_total_defense()) if hasattr(entity, 'get_total_defense') else int(getattr(entity, 'defense', 0))
-                if cs.ac is None:
-                    cs.ac = 10 + dfn
+                # compute dex modifier from attributes if present
+                dex = None
+                try:
+                    if isinstance(dnd, dict):
+                        attrs_local = dnd.get('attrs') or dnd.get('attributes') or {}
+                        dex = int(attrs_local.get('dex', attrs_local.get('DEX', 10) or 10))
+                except Exception:
+                    dex = None
+                dex_mod = (int(dex) - 10) // 2 if dex is not None else 0
+                cs.ac = 10 + dex_mod + dfn
             except Exception:
                 pass
             return cs
@@ -448,6 +500,73 @@ class SimplePvEGame:
                 pass
             return False, '技能执行失败'
 
+    # --- 小工具 ---
+    def _get_attr(self, entity, name: str, default: int = 10) -> int:
+        try:
+            dnd = getattr(entity, 'dnd', None)
+            if isinstance(dnd, dict):
+                attrs = dnd.get('attrs') or dnd.get('attributes') or {}
+                val = attrs.get(name) or attrs.get(name.upper())
+                if val is None:
+                    return int(default)
+                return int(val)
+        except Exception:
+            pass
+        return int(default)
+
+    def _has_dual_wield(self, entity) -> bool:
+        try:
+            eq = getattr(entity, 'equipment', None)
+            if not eq:
+                return False
+            if getattr(eq, 'left_hand', None) and getattr(eq, 'right_hand', None):
+                # 左手若为双手武器，则不算双持
+                return not getattr(eq.left_hand, 'is_two_handed', False)
+        except Exception:
+            return False
+        return False
+
+    def _has_shield(self, entity) -> bool:
+        try:
+            eq = getattr(entity, 'equipment', None)
+            if not eq:
+                return False
+            lh = getattr(eq, 'left_hand', None)
+            if lh is None:
+                return False
+            # 类型判断优先
+            try:
+                from systems.equipment_system import ShieldItem
+                return isinstance(lh, ShieldItem)
+            except Exception:
+                # 退化：槽位为左手且防御>0 且 is_two_handed=False 视为盾
+                return (getattr(lh, 'slot_type', '') == 'left_hand' and not getattr(lh, 'is_two_handed', False) and int(getattr(lh, 'defense', 0)) > 0)
+        except Exception:
+            return False
+
+    def _unequip_and_loot(self, target, slot: str) -> bool:
+        """尝试卸下目标指定槽位装备并加入玩家背包。"""
+        try:
+            eq = getattr(target, 'equipment', None)
+            if not eq:
+                return False
+            it = eq.unequip(slot)
+            if it is None:
+                return False
+            # 加入玩家背包（若存在）
+            try:
+                self.player.add_item(it, 1)
+            except Exception:
+                # 退化：加入资源区（以字符串形式展示）
+                try:
+                    self.resource_zone.append(it)
+                except Exception:
+                    pass
+            self.log({'type': 'loot', 'text': f"{getattr(target,'name',target)} 掉落了 {getattr(it,'name',str(it))}", 'meta': {}})
+            return True
+        except Exception:
+            return False
+
     def _skill_sweep(self, src, tgt):
         """横扫：对所有敌人进行一次攻击判定并造成源攻击力的一半伤害（向下取整）。"""
         try:
@@ -600,6 +719,421 @@ class SimplePvEGame:
         except Exception:
             return False, '奥术飞弹 失败'
 
+    # --- 新技能实现 ---
+    def _skill_power_slam(self, src, tgt):
+        """力量猛击：基于力量的重击；命中后造成 1d(ATK+STR修正) 伤害。"""
+        if tgt is None:
+            return False, '未选择目标'
+        try:
+            from systems.dnd_rules import to_hit_roll, roll_damage
+        except Exception:
+            to_hit_roll = roll_damage = None
+        str_mod = (self._get_attr(src, 'str') - 10) // 2
+        atk_val = int(src.get_total_attack() if hasattr(src, 'get_total_attack') else getattr(src, 'attack', 1))
+        meta = {}
+        hit = True
+        th = None
+        if to_hit_roll:
+            th = to_hit_roll(self._to_character_sheet(src), self._to_character_sheet(tgt), use_str=True, weapon_bonus=0, is_proficient=False)
+            hit = th.get('hit', True)
+            meta['to_hit'] = th
+        if not hit:
+            self.log({'type': 'skill', 'text': f"{src} 的 力量猛击 未命中 {getattr(tgt,'name',tgt)}", 'meta': meta})
+            return True, '未命中'
+        dmg_r = None
+        amount = max(1, atk_val + max(0, str_mod))
+        if roll_damage:
+            dmg_r = roll_damage(self._to_character_sheet(src), dice=(1, max(1, amount)), damage_bonus=0, critical=th.get('critical', False) if isinstance(th, dict) else False)
+            amount = int(dmg_r.get('total', amount))
+        prev = getattr(tgt, 'hp', 0)
+        dead = tgt.take_damage(amount)
+        dealt = max(0, prev - getattr(tgt, 'hp', prev))
+        meta['damage'] = dmg_r
+        self.log({'type': 'skill', 'text': f"{src} 使用 力量猛击 对 {getattr(tgt,'name',tgt)} 造成 {dealt} 伤害", 'meta': meta})
+        if dead:
+            try:
+                tgt.on_death(self)
+            except Exception:
+                pass
+        return True, '力量猛击 完成'
+
+    def _skill_bloodlust_priority(self, src, tgt):
+        """血腥优先：若未选目标，则自动选择当前生命最低的敌人；命中后造成 1dATK 伤害，若击杀，治疗自身2点。"""
+        import math
+        try:
+            from systems.dnd_rules import to_hit_roll, roll_damage
+        except Exception:
+            to_hit_roll = roll_damage = None
+        # 自动选择
+        if tgt is None and self.enemies:
+            tgt = min(self.enemies, key=lambda e: getattr(e, 'hp', 0))
+        if tgt is None:
+            return False, '无可选目标'
+        meta = {}
+        hit = True
+        th = None
+        if to_hit_roll:
+            th = to_hit_roll(self._to_character_sheet(src), self._to_character_sheet(tgt), use_str=True, weapon_bonus=0, is_proficient=False)
+            hit = th.get('hit', True)
+            meta['to_hit'] = th
+        if not hit:
+            self.log({'type': 'skill', 'text': f"{src} 的 血腥优先 未命中 {getattr(tgt,'name',tgt)}", 'meta': meta})
+            return True, '未命中'
+        atk_val = int(src.get_total_attack() if hasattr(src, 'get_total_attack') else getattr(src, 'attack', 1))
+        dmg_r = None
+        if roll_damage:
+            dmg_r = roll_damage(self._to_character_sheet(src), dice=(1, max(1, atk_val)), damage_bonus=1, critical=th.get('critical', False) if isinstance(th, dict) else False)
+            amount = int(dmg_r.get('total', atk_val))
+        else:
+            amount = atk_val + 1
+        prev = getattr(tgt, 'hp', 0)
+        dead = tgt.take_damage(amount)
+        dealt = max(0, prev - getattr(tgt, 'hp', prev))
+        meta['damage'] = dmg_r
+        self.log({'type': 'skill', 'text': f"{src} 的 血腥优先 对 {getattr(tgt,'name',tgt)} 造成 {dealt} 伤害", 'meta': meta})
+        if dead:
+            try:
+                tgt.on_death(self)
+            except Exception:
+                pass
+            # 击杀回复
+            try:
+                src.heal(2)
+            except Exception:
+                pass
+            self.log({'type': 'skill', 'text': f"{src} 因击杀而恢复 2 点生命", 'meta': {}})
+        return True, '血腥优先 完成'
+
+    def _skill_execute_mage(self, src, tgt):
+        """斩杀法师：对法师型目标造成高额伤害；非法师仅造成较低伤害。"""
+        if tgt is None:
+            return False, '未选择目标'
+        try:
+            from systems.dnd_rules import to_hit_roll, roll_damage
+        except Exception:
+            to_hit_roll = roll_damage = None
+        # 判定是否法师
+        is_mage = False
+        try:
+            tags = [str(t).lower() for t in (getattr(tgt, 'tags', []) or [])]
+            if 'mage' in tags or 'wizard' in tags:
+                is_mage = True
+            else:
+                is_mage = self._get_attr(tgt, 'int', 10) >= 12
+        except Exception:
+            pass
+        meta = {}
+        hit = True
+        th = None
+        if to_hit_roll:
+            th = to_hit_roll(self._to_character_sheet(src), self._to_character_sheet(tgt), use_str=True, weapon_bonus=0, is_proficient=False)
+            hit = th.get('hit', True)
+            meta['to_hit'] = th
+        if not hit:
+            self.log({'type': 'skill', 'text': f"{src} 的 斩杀法师 未命中 {getattr(tgt,'name',tgt)}", 'meta': meta})
+            return True, '未命中'
+        atk_val = int(src.get_total_attack() if hasattr(src, 'get_total_attack') else getattr(src, 'attack', 1))
+        base = atk_val * (2 if is_mage else 1)
+        bonus = 2 if is_mage else -1
+        dmg_r = None
+        if roll_damage:
+            dmg_r = roll_damage(self._to_character_sheet(src), dice=(1, max(1, base)), damage_bonus=max(0, bonus), critical=th.get('critical', False) if isinstance(th, dict) else False)
+            amount = int(dmg_r.get('total', base))
+        else:
+            amount = max(1, base + max(0, bonus))
+        prev = getattr(tgt, 'hp', 0)
+        dead = tgt.take_damage(amount)
+        dealt = max(0, prev - getattr(tgt, 'hp', prev))
+        meta['damage'] = dmg_r
+        self.log({'type': 'skill', 'text': f"{src} 的 斩杀法师 对 {getattr(tgt,'name',tgt)} 造成 {dealt} 伤害", 'meta': meta})
+        if dead:
+            try:
+                tgt.on_death(self)
+            except Exception:
+                pass
+        return True, '斩杀法师 完成'
+
+    def _skill_mass_intimidate(self, src, tgt):
+        """群体恐吓：对所有敌人进行一次对抗检定（CHA vs WIS），成功则记录其被震慑。"""
+        try:
+            from systems.dnd_rules import roll_d20
+        except Exception:
+            roll_d20 = None
+        cha_mod = (self._get_attr(src, 'cha') - 10) // 2
+        for e in list(self.enemies):
+            wis_mod = (self._get_attr(e, 'wis') - 10) // 2
+            if roll_d20:
+                a, _ = roll_d20()
+                d, _ = roll_d20()
+                success = (a + max(0, cha_mod)) >= (10 + max(0, wis_mod))
+            else:
+                success = (cha_mod >= wis_mod)
+            if success:
+                # 仅记录效果（暂不实现数值减益）
+                self.log({'type': 'skill', 'text': f"{src} 的 群体恐吓 震慑了 {getattr(e,'name',e)}", 'meta': {}})
+            else:
+                self.log({'type': 'skill', 'text': f"{getattr(e,'name',e)} 抵抗了 群体恐吓", 'meta': {}})
+        return True, '群体恐吓 完成'
+
+    def _skill_precise_strike(self, src, tgt):
+        """精准打击：优势命中，造成 1dATK 伤害。"""
+        if tgt is None:
+            return False, '未选择目标'
+        try:
+            from systems.dnd_rules import to_hit_roll, roll_damage
+        except Exception:
+            to_hit_roll = roll_damage = None
+        meta = {}
+        hit = True
+        th = None
+        if to_hit_roll:
+            th = to_hit_roll(self._to_character_sheet(src), self._to_character_sheet(tgt), use_str=True, weapon_bonus=0, is_proficient=False, advantage=True)
+            hit = th.get('hit', True)
+            meta['to_hit'] = th
+        if not hit:
+            self.log({'type': 'skill', 'text': f"{src} 的 精准打击 未命中 {getattr(tgt,'name',tgt)}", 'meta': meta})
+            return True, '未命中'
+        atk_val = int(src.get_total_attack() if hasattr(src, 'get_total_attack') else getattr(src, 'attack', 1))
+        dmg_r = None
+        if roll_damage:
+            dmg_r = roll_damage(self._to_character_sheet(src), dice=(1, max(1, atk_val)), damage_bonus=0, critical=th.get('critical', False) if isinstance(th, dict) else False)
+            amount = int(dmg_r.get('total', atk_val))
+        else:
+            amount = atk_val
+        prev = getattr(tgt, 'hp', 0)
+        dead = tgt.take_damage(amount)
+        dealt = max(0, prev - getattr(tgt, 'hp', prev))
+        meta['damage'] = dmg_r
+        self.log({'type': 'skill', 'text': f"{src} 的 精准打击 对 {getattr(tgt,'name',tgt)} 造成 {dealt} 伤害", 'meta': meta})
+        if dead:
+            try:
+                tgt.on_death(self)
+            except Exception:
+                pass
+        return True, '精准打击 完成'
+
+    def _skill_disarm(self, src, tgt):
+        """缴械：尝试卸下目标的武器（优先右手，其次左手），将装备转入我方背包。"""
+        if tgt is None:
+            return False, '未选择目标'
+        # 命中检定（可选）
+        try:
+            from systems.dnd_rules import to_hit_roll
+        except Exception:
+            to_hit_roll = None
+        hit = True
+        th = None
+        if to_hit_roll:
+            th = to_hit_roll(self._to_character_sheet(src), self._to_character_sheet(tgt), use_str=True)
+            hit = th.get('hit', True)
+        if not hit:
+            self.log({'type': 'skill', 'text': f"{src} 的 缴械 未能成功作用于 {getattr(tgt,'name',tgt)}", 'meta': {'to_hit': th}})
+            return True, '未命中'
+        # 尝试卸下
+        if self._unequip_and_loot(tgt, 'right_hand'):
+            self.log({'type': 'skill', 'text': f"{src} 缴械成功：{getattr(tgt,'name',tgt)} 右手装备被卸下", 'meta': {}})
+            return True, '缴械成功'
+        if self._unequip_and_loot(tgt, 'left_hand'):
+            self.log({'type': 'skill', 'text': f"{src} 缴械成功：{getattr(tgt,'name',tgt)} 左手装备被卸下", 'meta': {}})
+            return True, '缴械成功'
+        self.log({'type': 'skill', 'text': f"{src} 尝试缴械，但 {getattr(tgt,'name',tgt)} 无可卸下装备", 'meta': {}})
+        return True, '无可缴械'
+
+    def _skill_shield_breaker(self, src, tgt):
+        """破盾：若目标持盾，移除其盾牌并造成额外伤害；否则造成轻微伤害。"""
+        if tgt is None:
+            return False, '未选择目标'
+        try:
+            from systems.dnd_rules import to_hit_roll, roll_damage
+        except Exception:
+            to_hit_roll = roll_damage = None
+        meta = {}
+        hit = True
+        th = None
+        if to_hit_roll:
+            th = to_hit_roll(self._to_character_sheet(src), self._to_character_sheet(tgt), use_str=True)
+            hit = th.get('hit', True)
+            meta['to_hit'] = th
+        if not hit:
+            self.log({'type': 'skill', 'text': f"{src} 的 破盾 未命中 {getattr(tgt,'name',tgt)}", 'meta': meta})
+            return True, '未命中'
+        bonus = 3 if self._has_shield(tgt) else 0
+        if bonus > 0:
+            # 先卸下盾
+            if self._unequip_and_loot(tgt, 'left_hand'):
+                self.log({'type': 'skill', 'text': f"{src} 击碎了 {getattr(tgt,'name',tgt)} 的盾牌!", 'meta': {}})
+        atk_val = int(src.get_total_attack() if hasattr(src, 'get_total_attack') else getattr(src, 'attack', 1))
+        dmg_r = None
+        amount = max(1, atk_val // 2 + bonus)
+        if roll_damage:
+            dmg_r = roll_damage(self._to_character_sheet(src), dice=(1, max(1, amount)), damage_bonus=0, critical=th.get('critical', False) if isinstance(th, dict) else False)
+            amount = int(dmg_r.get('total', amount))
+        prev = getattr(tgt, 'hp', 0)
+        dead = tgt.take_damage(amount)
+        dealt = max(0, prev - getattr(tgt, 'hp', prev))
+        meta['damage'] = dmg_r
+        self.log({'type': 'skill', 'text': f"{src} 的 破盾 对 {getattr(tgt,'name',tgt)} 造成 {dealt} 伤害", 'meta': meta})
+        if dead:
+            try:
+                tgt.on_death(self)
+            except Exception:
+                pass
+        return True, '破盾 完成'
+
+    def _skill_dual_wield_bane(self, src, tgt):
+        """双刀克星：若目标为双持，则优势命中并造成额外伤害；否则普通伤害。"""
+        if tgt is None:
+            return False, '未选择目标'
+        try:
+            from systems.dnd_rules import to_hit_roll, roll_damage
+        except Exception:
+            to_hit_roll = roll_damage = None
+        dual = self._has_dual_wield(tgt)
+        meta = {}
+        hit = True
+        th = None
+        if to_hit_roll:
+            th = to_hit_roll(self._to_character_sheet(src), self._to_character_sheet(tgt), use_str=True, advantage=dual)
+            hit = th.get('hit', True)
+            meta['to_hit'] = th
+        if not hit:
+            self.log({'type': 'skill', 'text': f"{src} 的 双刀克星 未命中 {getattr(tgt,'name',tgt)}", 'meta': meta})
+            return True, '未命中'
+        atk_val = int(src.get_total_attack() if hasattr(src, 'get_total_attack') else getattr(src, 'attack', 1))
+        bonus = 2 if dual else 0
+        dmg_r = None
+        if roll_damage:
+            dmg_r = roll_damage(self._to_character_sheet(src), dice=(1, max(1, atk_val)), damage_bonus=bonus, critical=th.get('critical', False) if isinstance(th, dict) else False)
+            amount = int(dmg_r.get('total', atk_val + bonus))
+        else:
+            amount = atk_val + bonus
+        prev = getattr(tgt, 'hp', 0)
+        dead = tgt.take_damage(amount)
+        dealt = max(0, prev - getattr(tgt, 'hp', prev))
+        meta['damage'] = dmg_r
+        self.log({'type': 'skill', 'text': f"{src} 的 双刀克星 对 {getattr(tgt,'name',tgt)} 造成 {dealt} 伤害", 'meta': meta})
+        if dead:
+            try:
+                tgt.on_death(self)
+            except Exception:
+                pass
+        return True, '双刀克星 完成'
+
+    def _skill_mind_over_matter(self, src, tgt):
+        """强于心智：精神打击，不进行命中检定，造成 INT 修正+2 的伤害（至少 1）。"""
+        if tgt is None:
+            return False, '未选择目标'
+        int_mod = (self._get_attr(src, 'int') - 10) // 2
+        amount = max(1, int_mod + 2)
+        prev = getattr(tgt, 'hp', 0)
+        dead = tgt.take_damage(amount)
+        dealt = max(0, prev - getattr(tgt, 'hp', prev))
+        self.log({'type': 'skill', 'text': f"{src} 的 强于心智 对 {getattr(tgt,'name',tgt)} 造成 {dealt} 精神伤害", 'meta': {'psychic': True}})
+        if dead:
+            try:
+                tgt.on_death(self)
+            except Exception:
+                pass
+        return True, '强于心智 完成'
+
+    def _skill_trial_of_wisdom(self, src, tgt):
+        """智慧试炼：若施法者 INT 不低于目标，则造成 1d6+INT修正 伤害；否则无效果。"""
+        if tgt is None:
+            return False, '未选择目标'
+        try:
+            from systems.dnd_rules import roll_damage
+        except Exception:
+            roll_damage = None
+        if self._get_attr(src, 'int') < self._get_attr(tgt, 'int'):
+            self.log({'type': 'skill', 'text': f"{src} 的 智慧试炼 被 {getattr(tgt,'name',tgt)} 识破，未起效果", 'meta': {}})
+            return True, '未起效果'
+        int_mod = (self._get_attr(src, 'int') - 10) // 2
+        dmg_r = None
+        if roll_damage:
+            dmg_r = roll_damage(self._to_character_sheet(src), dice=(1, 6), damage_bonus=max(0, int_mod), critical=False)
+            amount = int(dmg_r.get('total', 1 + max(0, int_mod)))
+        else:
+            amount = 1 + max(0, int_mod)
+        prev = getattr(tgt, 'hp', 0)
+        dead = tgt.take_damage(amount)
+        dealt = max(0, prev - getattr(tgt, 'hp', prev))
+        self.log({'type': 'skill', 'text': f"{src} 的 智慧试炼 对 {getattr(tgt,'name',tgt)} 造成 {dealt} 伤害", 'meta': {'damage': dmg_r}})
+        if dead:
+            try:
+                tgt.on_death(self)
+            except Exception:
+                pass
+        return True, '智慧试炼 完成'
+
+    def _skill_execute_wounded(self, src, tgt):
+        """重伤补刀：若目标生命≤30%最大值，直接处决；否则造成中等伤害。"""
+        if tgt is None:
+            return False, '未选择目标'
+        try:
+            mhp = int(getattr(tgt, 'max_hp', getattr(tgt, 'hp', 1)))
+            hp = int(getattr(tgt, 'hp', 0))
+        except Exception:
+            mhp = 1; hp = 0
+        threshold = max(1, (mhp * 3) // 10)
+        if hp <= threshold:
+            # 处决
+            prev = hp
+            try:
+                tgt.take_damage(hp)
+            except Exception:
+                tgt.hp = 0
+            self.log({'type': 'skill', 'text': f"{src} 的 重伤补刀 处决了 {getattr(tgt,'name',tgt)}", 'meta': {'execute': True, 'hp_before': prev}})
+            try:
+                tgt.on_death(self)
+            except Exception:
+                pass
+            return True, '处决完成'
+        # 否则造成中等伤害：ATK 的一半 +1
+        try:
+            from systems.dnd_rules import roll_damage
+        except Exception:
+            roll_damage = None
+        atk_val = int(src.get_total_attack() if hasattr(src, 'get_total_attack') else getattr(src, 'attack', 1))
+        base = max(1, atk_val // 2 + 1)
+        dmg_r = None
+        if roll_damage:
+            dmg_r = roll_damage(self._to_character_sheet(src), dice=(1, base), damage_bonus=0, critical=False)
+            amount = int(dmg_r.get('total', base))
+        else:
+            amount = base
+        prev = getattr(tgt, 'hp', 0)
+        dead = tgt.take_damage(amount)
+        dealt = max(0, prev - getattr(tgt, 'hp', prev))
+        self.log({'type': 'skill', 'text': f"{src} 的 重伤补刀 对 {getattr(tgt,'name',tgt)} 造成 {dealt} 伤害", 'meta': {'damage': dmg_r}})
+        if dead:
+            try:
+                tgt.on_death(self)
+            except Exception:
+                pass
+        return True, '重伤补刀 完成'
+
+    def _skill_fair_distribution(self, src, tgt):
+        """公平分配：将自身总攻击力平均分配对所有敌人造成伤害（向下取整）。"""
+        if not self.enemies:
+            return False, '无敌人'
+        total = int(src.get_total_attack() if hasattr(src, 'get_total_attack') else getattr(src, 'attack', 0))
+        n = len(self.enemies)
+        if n <= 0 or total <= 0:
+            self.log({'type': 'skill', 'text': f"{src} 的 公平分配 未造成伤害", 'meta': {}})
+            return True, '无伤害'
+        each = max(1, total // n)
+        for e in list(self.enemies):
+            prev = getattr(e, 'hp', 0)
+            dead = e.take_damage(each)
+            dealt = max(0, prev - getattr(e, 'hp', prev))
+            self.log({'type': 'skill', 'text': f"{src} 的 公平分配 对 {getattr(e,'name',e)} 造成 {dealt} 伤害", 'meta': {'each': each}})
+            if dead:
+                try:
+                    e.on_death(self)
+                except Exception:
+                    pass
+        return True, '公平分配 完成'
+
     # Boss 攻击逻辑已移除（场景模式无 Boss）
 
     # 兼容旧卡组接口（Battlecry等会调用）
@@ -701,7 +1235,50 @@ class SimplePvEGame:
                                     game.resource_zone.append(res)
                                 except Exception:
                                     pass
-                return Enemy(name or '敌人', atk, hp, death_effect)
+                e = Enemy(name or '敌人', atk, hp, death_effect)
+                # 可选增强字段：tags/passive/skills/profession/race
+                try:
+                    if isinstance(ed.get('tags'), list):
+                        e.tags = list(ed.get('tags'))
+                    if isinstance(ed.get('passive') or ed.get('passives'), dict):
+                        e.passive = dict(ed.get('passive') or ed.get('passives'))
+                    if isinstance(ed.get('skills'), list):
+                        e.skills = list(ed.get('skills'))
+                    if ed.get('profession'):
+                        e.profession = ed.get('profession')
+                    if ed.get('race'):
+                        e.race = ed.get('race')
+                except Exception:
+                    pass
+                # 初始装备（与随从相同格式）
+                equip_data = ed.get('equip') if 'equip' in ed else ed.get('equipment')
+                if equip_data:
+                    try:
+                        self._equip_from_json(e, equip_data)
+                    except Exception:
+                        pass
+                # DND 数据
+                try:
+                    dnd = None
+                    if isinstance(ed.get('dnd'), dict):
+                        dnd = ed.get('dnd')
+                    else:
+                        flat = {}
+                        if 'ac' in ed: flat['ac'] = ed.get('ac')
+                        if 'level' in ed: flat['level'] = ed.get('level')
+                        if 'attrs' in ed and isinstance(ed.get('attrs'), dict):
+                            flat['attrs'] = ed.get('attrs')
+                        if 'attributes' in ed and isinstance(ed.get('attributes'), dict):
+                            flat['attrs'] = ed.get('attributes')
+                        if 'bonuses' in ed and isinstance(ed.get('bonuses'), dict):
+                            flat['bonuses'] = ed.get('bonuses')
+                        if flat:
+                            dnd = flat
+                    if dnd:
+                        setattr(e, 'dnd', dnd)
+                except Exception:
+                    pass
+                return e
             return None
         except Exception:
             return None

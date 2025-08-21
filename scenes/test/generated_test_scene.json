@@ -1,0 +1,482 @@
+{
+  "title": "Generated 综合测试场景",
+  "parent": "main.json",
+  "refresh_board_on_enter": true,
+  "board": [
+    {
+      "name": "战士A",
+      "atk": 5,
+      "hp": 15,
+      "profession": "warrior",
+      "tags": [
+        "warrior"
+      ],
+      "skills": [
+        "sweep",
+        "trial_of_wisdom"
+      ],
+      "dnd": {
+        "level": 3,
+        "attrs": {
+          "str": 16,
+          "dex": 12,
+          "con": 16,
+          "int": 10,
+          "wis": 10,
+          "cha": 12
+        }
+      },
+      "equip": {
+        "items": [
+          {
+            "type": "armor",
+            "name": "皮甲",
+            "defense": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "牧师B",
+      "atk": 7,
+      "hp": 17,
+      "profession": null,
+      "tags": [],
+      "skills": [
+        "trial_of_wisdom",
+        "basic_heal"
+      ],
+      "dnd": {
+        "level": 3,
+        "attrs": {
+          "str": 10,
+          "dex": 16,
+          "con": 12,
+          "int": 8,
+          "wis": 10,
+          "cha": 12
+        }
+      },
+      "equip": {
+        "items": [
+          {
+            "type": "armor",
+            "name": "皮甲",
+            "defense": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "法师C",
+      "atk": 4,
+      "hp": 18,
+      "profession": "priest",
+      "tags": [
+        "priest"
+      ],
+      "skills": [
+        "arcane_missiles",
+        "taunt"
+      ],
+      "dnd": {
+        "level": 3,
+        "attrs": {
+          "str": 12,
+          "dex": 10,
+          "con": 14,
+          "int": 14,
+          "wis": 10,
+          "cha": 16
+        }
+      },
+      "equip": {
+        "items": [
+          {
+            "type": "weapon",
+            "name": "巨剑",
+            "attack": 5,
+            "slot": "left_hand",
+            "two_handed": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "游侠D",
+      "atk": 5,
+      "hp": 20,
+      "profession": null,
+      "tags": [],
+      "skills": [
+        "basic_heal",
+        "drain"
+      ],
+      "dnd": {
+        "level": 3,
+        "attrs": {
+          "str": 14,
+          "dex": 12,
+          "con": 16,
+          "int": 16,
+          "wis": 8,
+          "cha": 8
+        }
+      },
+      "equip": {
+        "items": [
+          {
+            "type": "weapon",
+            "name": "钢剑",
+            "attack": 4,
+            "slot": "right_hand"
+          },
+          {
+            "type": "shield",
+            "name": "圆盾",
+            "defense": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "坦克E",
+      "atk": 6,
+      "hp": 16,
+      "profession": "warrior",
+      "tags": [
+        "warrior"
+      ],
+      "skills": [
+        "disarm",
+        "precise_strike"
+      ],
+      "dnd": {
+        "level": 3,
+        "attrs": {
+          "str": 16,
+          "dex": 16,
+          "con": 16,
+          "int": 10,
+          "wis": 16,
+          "cha": 12
+        }
+      },
+      "equip": {
+        "items": [
+          {
+            "type": "weapon",
+            "name": "巨剑",
+            "attack": 5,
+            "slot": "left_hand",
+            "two_handed": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "格斗家F",
+      "atk": 5,
+      "hp": 22,
+      "profession": null,
+      "tags": [],
+      "skills": [
+        "execute_wounded",
+        "trial_of_wisdom"
+      ],
+      "dnd": {
+        "level": 3,
+        "attrs": {
+          "str": 10,
+          "dex": 12,
+          "con": 12,
+          "int": 14,
+          "wis": 16,
+          "cha": 8
+        }
+      },
+      "equip": {
+        "items": [
+          {
+            "type": "weapon",
+            "name": "短剑",
+            "attack": 2,
+            "slot": "left_hand"
+          },
+          {
+            "type": "weapon",
+            "name": "短剑",
+            "attack": 2,
+            "slot": "right_hand"
+          }
+        ]
+      }
+    },
+    {
+      "name": "学者G",
+      "atk": 4,
+      "hp": 23,
+      "profession": null,
+      "tags": [],
+      "skills": [
+        "bloodlust_priority",
+        "trial_of_wisdom"
+      ],
+      "dnd": {
+        "level": 3,
+        "attrs": {
+          "str": 12,
+          "dex": 16,
+          "con": 14,
+          "int": 14,
+          "wis": 12,
+          "cha": 10
+        }
+      },
+      "equip": {
+        "items": [
+          {
+            "type": "weapon",
+            "name": "钢剑",
+            "attack": 4,
+            "slot": "right_hand"
+          },
+          {
+            "type": "shield",
+            "name": "圆盾",
+            "defense": 2
+          }
+        ]
+      }
+    },
+    {
+      "name": "盗贼H",
+      "atk": 5,
+      "hp": 14,
+      "profession": "mage",
+      "tags": [
+        "mage"
+      ],
+      "skills": [
+        "shield_breaker",
+        "bloodlust_priority"
+      ],
+      "dnd": {
+        "level": 3,
+        "attrs": {
+          "str": 14,
+          "dex": 12,
+          "con": 12,
+          "int": 14,
+          "wis": 12,
+          "cha": 12
+        }
+      },
+      "equip": {
+        "items": [
+          {
+            "type": "weapon",
+            "name": "短剑",
+            "attack": 2,
+            "slot": "left_hand"
+          },
+          {
+            "type": "weapon",
+            "name": "短剑",
+            "attack": 2,
+            "slot": "right_hand"
+          }
+        ]
+      }
+    }
+  ],
+  "enemies": [
+    {
+      "name": "盗贼(双持)",
+      "hp": 22,
+      "attack": 4,
+      "tags": [
+        "rogue"
+      ],
+      "dnd": {
+        "level": 3,
+        "attrs": {
+          "str": 12,
+          "dex": 10,
+          "con": 12,
+          "int": 16,
+          "wis": 12,
+          "cha": 14
+        }
+      },
+      "equip": {
+        "items": [
+          {
+            "type": "weapon",
+            "name": "匕首",
+            "attack": 2,
+            "slot": "left_hand"
+          },
+          {
+            "type": "weapon",
+            "name": "匕首",
+            "attack": 2,
+            "slot": "right_hand"
+          }
+        ]
+      }
+    },
+    {
+      "name": "盾卫",
+      "hp": 25,
+      "attack": 5,
+      "tags": [
+        "guard"
+      ],
+      "dnd": {
+        "level": 3,
+        "attrs": {
+          "str": 16,
+          "dex": 10,
+          "con": 14,
+          "int": 12,
+          "wis": 12,
+          "cha": 14
+        }
+      },
+      "equip": {
+        "items": [
+          {
+            "type": "shield",
+            "name": "塔盾",
+            "defense": 4
+          },
+          {
+            "type": "weapon",
+            "name": "短剑",
+            "attack": 2,
+            "slot": "right_hand"
+          }
+        ]
+      }
+    },
+    {
+      "name": "术士",
+      "hp": 28,
+      "attack": 7,
+      "tags": [
+        "mage"
+      ],
+      "dnd": {
+        "level": 3,
+        "attrs": {
+          "str": 12,
+          "dex": 14,
+          "con": 16,
+          "int": 14,
+          "wis": 16,
+          "cha": 16
+        }
+      }
+    },
+    {
+      "name": "狂战士",
+      "hp": 18,
+      "attack": 6,
+      "tags": [
+        "warrior"
+      ],
+      "dnd": {
+        "level": 3,
+        "attrs": {
+          "str": 14,
+          "dex": 14,
+          "con": 16,
+          "int": 8,
+          "wis": 12,
+          "cha": 12
+        }
+      },
+      "equip": {
+        "items": [
+          {
+            "type": "weapon",
+            "name": "巨斧",
+            "attack": 6,
+            "slot": "left_hand",
+            "two_handed": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "步兵",
+      "hp": 24,
+      "attack": 4,
+      "tags": [],
+      "dnd": {
+        "level": 3,
+        "attrs": {
+          "str": 14,
+          "dex": 10,
+          "con": 14,
+          "int": 12,
+          "wis": 16,
+          "cha": 10
+        }
+      }
+    },
+    {
+      "name": "盗贼(双持)",
+      "hp": 26,
+      "attack": 5,
+      "tags": [
+        "rogue"
+      ],
+      "dnd": {
+        "level": 3,
+        "attrs": {
+          "str": 10,
+          "dex": 12,
+          "con": 12,
+          "int": 12,
+          "wis": 8,
+          "cha": 14
+        }
+      },
+      "equip": {
+        "items": [
+          {
+            "type": "weapon",
+            "name": "匕首",
+            "attack": 2,
+            "slot": "left_hand"
+          },
+          {
+            "type": "weapon",
+            "name": "匕首",
+            "attack": 2,
+            "slot": "right_hand"
+          }
+        ]
+      }
+    }
+  ],
+  "resources": [
+    {
+      "name": "生命药水",
+      "type": "potion",
+      "value": 3
+    },
+    {
+      "name": "皮甲",
+      "type": "armor",
+      "value": 2
+    },
+    {
+      "name": "铁剑",
+      "type": "weapon",
+      "value": 3
+    }
+  ]
+}

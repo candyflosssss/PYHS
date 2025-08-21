@@ -55,26 +55,7 @@ def _write_startup_marker():
 if __name__ == "__main__":
     # 在入口尽早记录启动信息，便于单击 EXE 时诊断路径/打包上下文
     _write_startup_marker()
-    # 尝试在运行时确定一个明确的初始场景路径，优先兼容 PyInstaller onefile (_MEIPASS)
-    initial = None
-    try:
-        # 当被打包时，场景可能在 sys._MEIPASS 下的 scenes 目录
-        if getattr(sys, 'frozen', False):
-            meipass = getattr(sys, '_MEIPASS', None)
-            if meipass:
-                candidate = os.path.join(meipass, 'scenes', 'default_scene.json')
-                if os.path.exists(candidate):
-                    initial = candidate
-        # 开发环境下使用 yyy/scenes 下的默认场景
-        if initial is None:
-            candidate = os.path.join(os.path.dirname(__file__), 'scenes', 'default_scene.json')
-            if os.path.exists(candidate):
-                initial = candidate
-    except Exception:
-        initial = None
-
-    # 支持通过命令行传入初始场景（覆盖），否则使用已检测到的路径或回退到默认场景名
+    # 默认从主菜单启动；仅当命令行显式传入场景路径/ID 时才直接进入游戏
     cli_scene = sys.argv[1] if len(sys.argv) > 1 else None
-    initial_scene = cli_scene or initial or 'default_scene.json'
-    # 可按需设定初始场景，例如: initial_scene="adventure_pack/world_map.json"
-    run_tk(player_name="玩家", initial_scene=initial_scene)
+    # 说明：不再自动探测 default_scene.json，以避免误入关卡而看不到主菜单
+    run_tk(player_name="玩家", initial_scene=cli_scene)
