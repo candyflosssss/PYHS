@@ -1,36 +1,17 @@
 import sys
 import json
 import os
+from src import app_config as CFG
 
 
 def _get_base_dir() -> str:
-    """获取资源基路径。
-    - 普通运行：返回当前文件所在目录
-    - PyInstaller 打包：返回临时解包目录(sys._MEIPASS) 或可执行文件同级目录
-    """
-    try:
-        if getattr(sys, 'frozen', False):  # type: ignore[attr-defined]
-            # 优先使用 _MEIPASS（onefile 解包目录），否则退回到可执行文件所在目录
-            base = getattr(sys, '_MEIPASS', None)  # type: ignore[attr-defined]
-            return base or os.path.dirname(sys.executable)
-    except Exception:
-        pass
-    return os.path.dirname(__file__)
+    """保持旧接口，委托到 app_config.base_dir。"""
+    return CFG.base_dir()
 
 
 def _get_config_path() -> str:
-    """获取配置写入路径。
-    - 普通运行：项目目录 user_config.json
-    - 打包运行：用户目录 %LOCALAPPDATA%\\PYHS\\user_config.json（保证可写）
-    """
-    try:
-        if getattr(sys, 'frozen', False):  # type: ignore[attr-defined]
-            base = os.path.join(os.path.expanduser("~"), "AppData", "Local", "PYHS")
-            os.makedirs(base, exist_ok=True)
-            return os.path.join(base, 'user_config.json')
-    except Exception:
-        pass
-    return os.path.join(_get_base_dir(), 'user_config.json')
+    """保持旧接口，委托到 app_config.user_config_path。"""
+    return CFG.user_config_path()
 
 
 CONFIG_PATH = _get_config_path()
@@ -58,7 +39,7 @@ def save_config(cfg: dict):
 
 
 def list_scenes():
-    """列出基础包(根目录)下的场景文件（聚合多个可能的根：scenes 与 yyy/scenes）。"""
+    """列出基础包(根目录)下的场景文件（聚合多个可能的根：由 app_config.scenes_roots() 提供）。"""
     roots = _get_scene_roots()
     seen = set()
     for root in roots:
@@ -104,21 +85,8 @@ def list_scenes_partition():
     return mains, subs
 
 def _get_scene_roots() -> list[str]:
-    """返回可能存在的场景根目录列表，按优先顺序：
-    1) <base>/scenes
-    2) <base>/yyy/scenes (GUI 打包时使用)
-    过滤不存在的路径。
-    """
-    base = _get_base_dir()
-    candidates = [
-        os.path.join(base, 'scenes'),
-        os.path.join(base, 'yyy', 'scenes'),
-    ]
-    roots: list[str] = []
-    for p in candidates:
-        if os.path.isdir(p) and p not in roots:
-            roots.append(p)
-    return roots
+    """委托到 app_config.scenes_roots，保持旧签名。"""
+    return CFG.scenes_roots()
 
 
 def discover_packs():
@@ -131,7 +99,7 @@ def discover_packs():
     # 基础包（根目录聚合）
     mains, subs = list_scenes_partition()
     # 选一个存在的根目录作为基础包的 dir 展示用（优先第一个）
-    base_dir = roots[0] if roots else os.path.join(_get_base_dir(), 'scenes')
+    base_dir = roots[0] if roots else os.path.join(CFG.src_dir(), 'scenes')
     packs[''] = {
         'name': '基础',
         'dir': base_dir,
@@ -245,7 +213,7 @@ def main():
                 cfg['last_scene'] = _pick_default_main(mains)
                 save_config(cfg)
             start_scene_path = (pack_id + '/' if pack_id else '') + cfg.get('last_scene', 'default_scene.json')
-            from game_modes.pve_controller import start_simple_pve_game as pve_start
+            from src.game_modes.pve_controller import start_simple_pve_game as pve_start
             pve_start(name=cfg.get('name'), scene=start_scene_path)
             break
 

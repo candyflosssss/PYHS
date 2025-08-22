@@ -6,8 +6,8 @@
 
 from typing import Callable, List, Tuple
 
-from game_modes.simple_pve_game import SimplePvEGame
-from ui import colors as C
+from src.game_modes.simple_pve_game import SimplePvEGame
+from src.ui import colors as C
 
 
 class SimplePvEController:
@@ -339,7 +339,7 @@ class SimplePvEController:
                 # 引导：列出可装备物品与可选队伍目标
                 lines = ["用法: equip|eq <物品名|iN> mN", C.label('可装备物品(支持 iN):')]
                 try:
-                    from systems.equipment_system import WeaponItem, ArmorItem, ShieldItem
+                    from src.systems.equipment_system import WeaponItem, ArmorItem, ShieldItem
                 except Exception:
                     WeaponItem = ArmorItem = ShieldItem = tuple()
                 inv = self.game.player.inventory
@@ -386,7 +386,7 @@ class SimplePvEController:
                         return ["无效的背包序号"], False
                     item = inv.slots[idx].item
                     try:
-                        from systems.equipment_system import WeaponItem, ArmorItem, ShieldItem
+                        from src.systems.equipment_system import WeaponItem, ArmorItem, ShieldItem
                     except Exception:
                         WeaponItem = ArmorItem = ShieldItem = tuple()
                     if not isinstance(item, (WeaponItem, ArmorItem, ShieldItem)):
@@ -427,7 +427,7 @@ class SimplePvEController:
                     return ["无效的背包序号"], False
                 item = inv.slots[idx].item
                 try:
-                    from systems.equipment_system import WeaponItem, ArmorItem, ShieldItem
+                    from src.systems.equipment_system import WeaponItem, ArmorItem, ShieldItem
                 except Exception:
                     WeaponItem = ArmorItem = ShieldItem = tuple()
                 if not isinstance(item, (WeaponItem, ArmorItem, ShieldItem)):
@@ -599,8 +599,8 @@ class SimplePvEController:
                     return lines, False
                 res = res_list.pop(ridx)
                 # 尝试转换为背包物品
-                from systems.equipment_system import WeaponItem, ArmorItem, ShieldItem
-                from systems.inventory import ConsumableItem, MaterialItem
+                from src.systems.equipment_system import WeaponItem, ArmorItem, ShieldItem
+                from src.systems.inventory import ConsumableItem, MaterialItem
                 item = None
                 if res.item_type == 'weapon':
                     item = WeaponItem(res.name, f"从资源拾取的{res.name}", 50, attack=res.effect_value)
@@ -651,7 +651,7 @@ class SimplePvEController:
             # 如果可能是装备且未提供目标，给出引导或交互
             if tgt is None:
                 try:
-                    from systems.equipment_system import WeaponItem, ArmorItem, ShieldItem
+                    from src.systems.equipment_system import WeaponItem, ArmorItem, ShieldItem
                 except Exception:
                     WeaponItem = ArmorItem = ShieldItem = tuple()
                 inv = self.game.player.inventory
@@ -918,7 +918,7 @@ class SimplePvEController:
         for mat, n in recipe['cost'].items():
             inv.remove_item(mat, n, game=getattr(self.game, 'log', None) and self.game)
         # 产出
-        from systems.inventory import ConsumableItem
+        from src.systems.inventory import ConsumableItem
         res_name, qty, desc, typ, val = recipe['result']
         if typ == 'potion':
             def eff(player, target):

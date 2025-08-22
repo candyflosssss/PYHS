@@ -3,6 +3,7 @@ Can be overridden or provided dynamically from backend later.
 """
 from __future__ import annotations
 from dataclasses import dataclass, field
+from src import app_config as CFG
 from typing import Callable, List, Optional, Dict, Any
 import os, json
 
@@ -30,7 +31,7 @@ DEFAULT_SPECS: Dict[str, SkillTargetSpec] = {
 # Attempt to overlay from external catalog if present
 def _load_overrides() -> Dict[str, SkillTargetSpec]:
     try:
-        p = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'systems', 'skills_catalog.json'))
+        p = CFG.skills_catalog_path()
         with open(p, 'r', encoding='utf-8') as f:
             data = json.load(f)
         out: Dict[str, SkillTargetSpec] = {}

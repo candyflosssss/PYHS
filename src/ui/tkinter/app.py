@@ -6,19 +6,20 @@ relative imports for other UI helpers.
 from __future__ import annotations
 
 import os
+from src import app_config as CFG
 import json
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 from typing import Optional
 
-from game_modes.pve_controller import SimplePvEController
+from src.game_modes.pve_controller import SimplePvEController
 from .. import colors as C
 from . import ui_utils as U
 from . import cards as tk_cards
 from . import resources as tk_resources
 from . import operations as tk_operations
-from ui.targeting.specs import DEFAULT_SPECS, SkillTargetSpec
-from ui.targeting.fsm import TargetingEngine
+from src.ui.targeting.specs import DEFAULT_SPECS, SkillTargetSpec
+from src.ui.targeting.fsm import TargetingEngine
 # Inline 选择：不使用弹窗选择器
 
 try:
@@ -299,7 +300,7 @@ class GameTkApp:
 		# 统一目标选择引擎
 		self.target_engine = TargetingEngine(self)
 
-		# 中部主体（资源与背包并排，信息与日志置于底部并排）
+		# 中部主体（资源与背包并排，底部统一“战斗日志”）
 		body = ttk.Frame(parent)
 		body.pack(fill=tk.BOTH, expand=True, padx=6, pady=(2, 6))
 		body.rowconfigure(0, weight=1)
@@ -354,35 +355,13 @@ class GameTkApp:
 		# 初始占位
 		ttk.Label(self.frm_operations, text="(未选择队员)", foreground="#666").grid(row=0, column=0, sticky='w', padx=6, pady=6)
 
-		# 底部：信息 与 日志 并排
+		# 底部：统一“战斗日志”
 		bottom = ttk.Frame(body)
 		bottom.grid(row=4, column=0, columnspan=2, sticky='nsew')
 		bottom.columnconfigure(0, weight=1)
-		bottom.columnconfigure(1, weight=1)
 
-		frm_info = ttk.LabelFrame(bottom, text="信息 / 状态")
-		frm_info.grid(row=0, column=0, sticky='nsew', padx=(0, 3), pady=(3, 3))
-		self.text_info = tk.Text(frm_info, height=10, wrap='word')
-		sb_info = ttk.Scrollbar(frm_info, orient='vertical', command=self.text_info.yview)
-		self.text_info.configure(yscrollcommand=sb_info.set)
-		self.text_info.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=6, pady=6)
-		sb_info.pack(side=tk.RIGHT, fill=tk.Y)
-		# 信息区语义颜色标签
-		try:
-			self.text_info.tag_configure('info', foreground='#222')
-			self.text_info.tag_configure('success', foreground='#27ae60')
-			self.text_info.tag_configure('warning', foreground='#E67E22')
-			self.text_info.tag_configure('attack', foreground='#c0392b', font=("Segoe UI", 8, 'bold'))
-			self.text_info.tag_configure('error', foreground='#d9534f', underline=True)
-		except Exception:
-			pass
-		try:
-			self.text_info.bind('<Motion>', self._on_info_motion)
-		except Exception:
-			pass
-
-		frm_log = ttk.LabelFrame(bottom, text="日志")
-		frm_log.grid(row=0, column=1, sticky='nsew', padx=(3, 0), pady=(3, 3))
+		frm_log = ttk.LabelFrame(bottom, text="战斗日志")
+		frm_log.grid(row=0, column=0, sticky='nsew', padx=(0, 0), pady=(3, 3))
 		self.text_log = tk.Text(frm_log, height=10, wrap='word')
 		sb_log = ttk.Scrollbar(frm_log, orient='vertical', command=self.text_log.yview)
 		self.text_log.configure(yscrollcommand=sb_log.set)
@@ -395,6 +374,8 @@ class GameTkApp:
 			self.text_log.tag_configure('warning', foreground='#E67E22')
 			self.text_log.tag_configure('attack', foreground='#c0392b', font=("Segoe UI", 8, 'bold'))
 			self.text_log.tag_configure('error', foreground='#d9534f', underline=True)
+			# 状态快照（统一信息区内容）
+			self.text_log.tag_configure('state', foreground="#666")
 		except Exception:
 			pass
 		try:
@@ -425,11 +406,10 @@ class GameTkApp:
 		self._refresh_inventory_only()
 		self._render_resources()
 
-		# 信息与日志（可选择跳过，避免与 _after_cmd 的即时输出重复导致闪烁）
+		# 统一日志：状态快照 + 结构化事件
 		if not skip_info_log:
-			self.text_info.delete('1.0', tk.END)
 			for line in (self.controller._section_info() or '').splitlines():
-				self._append_info(line)
+				self._append_log({'type': 'state', 'text': line, 'meta': {'state': True}})
 			try:
 				logs = self.controller.game.pop_logs()
 				for line in logs:
@@ -844,7 +824,7 @@ class GameTkApp:
 		ttk.Label(frm, textvariable=preview_var, foreground="#0a0").pack(anchor=tk.W, pady=(0, 4))
 
 		try:
-			from systems.equipment_system import WeaponItem, ArmorItem, ShieldItem
+			from src.systems.equipment_system import WeaponItem, ArmorItem, ShieldItem
 		except Exception:
 			WeaponItem = ArmorItem = ShieldItem = tuple()  # type: ignore
 		inv = self.controller.game.player.inventory
@@ -1103,78 +1083,18 @@ class GameTkApp:
 		except Exception:
 			pass
 
-	def _on_info_motion(self, event):
-		"""Show tooltip with meta for info pane when hovering a line that has meta."""
-		try:
-			if not hasattr(self, '_info_meta'):
-				return
-			idx = self.text_info.index(f"@{event.x},{event.y}")
-			line_no = idx.split('.')[0]
-			key = f"{line_no}.0"
-			meta = self._info_meta.get(key)
-			# avoid recreating on same line
-			if getattr(self, '_info_tooltip_key', None) == key and getattr(self, '_info_tooltip', None):
-				return
-			# destroy old
-			if getattr(self, '_info_tooltip', None):
-				try:
-					self._info_tooltip.destroy()
-				except Exception:
-					pass
-				self._info_tooltip = None
-				self._info_tooltip_key = None
-			if not meta:
-				return
-			text = json.dumps(meta, ensure_ascii=False, indent=1)
-			x = self.text_info.winfo_rootx() + event.x + 12
-			y = self.text_info.winfo_rooty() + event.y + 12
-			try:
-				tw = tk.Toplevel(self.text_info)
-				tw.wm_overrideredirect(True)
-				tw.wm_geometry(f"+{x}+{y}")
-				lbl = ttk.Label(tw, text=text, relief='solid', borderwidth=1, padding=6, background='#ffffe0')
-				lbl.pack()
-				self._info_tooltip = tw
-				self._info_tooltip_key = key
-			except Exception:
-				self._info_tooltip = None
-				self._info_tooltip_key = None
-		except Exception:
-			pass
+	# 移除信息区 hover，统一使用日志悬浮
 
 	# -------- Actions --------
 	def _append_info(self, text_or_entry):
-		"""支持结构化日志（dict）渲染到信息窗；同时保存 meta 以悬浮显示。"""
+		"""兼容旧信息区 API：改为统一追加到战斗日志。"""
 		try:
 			if isinstance(text_or_entry, dict):
-				typ = text_or_entry.get('type', 'info')
-				txt = text_or_entry.get('text', '')
-				meta = text_or_entry.get('meta', {}) or {}
+				self._append_log(text_or_entry)
 			else:
-				typ = 'info'
-				txt = str(text_or_entry)
-				meta = {}
-			clean = C.strip(str(txt))
-			start = self.text_info.index(tk.END)
-			self.text_info.insert(tk.END, clean + "\n")
-			end = self.text_info.index(tk.END)
-			try:
-				if typ in ('info','success','warning','attack','error'):
-					self.text_info.tag_add(typ, start, end)
-				else:
-					self.text_info.tag_add('info', start, end)
-			except Exception:
-				pass
-			if not hasattr(self, '_info_meta'):
-				self._info_meta = {}
-			self._info_meta[start] = meta
-			self.text_info.see(tk.END)
+				self._append_log({'type': 'info', 'text': str(text_or_entry), 'meta': {}})
 		except Exception:
-			try:
-				self.text_info.insert(tk.END, C.strip(str(text_or_entry)) + "\n")
-				self.text_info.see(tk.END)
-			except Exception:
-				pass
+			pass
 
 	def _append_log(self, text: str):
 		"""Accept either a string or a structured log dict and render it.
@@ -1241,8 +1161,7 @@ class GameTkApp:
 		# 仅附加日志/信息，不清空，不重绘整页
 		try:
 			import os as _os
-			_home = _os.path.expanduser('~')
-			_logdir = _os.path.join(_home, '.pyhs')
+			_logdir = CFG.log_dir()
 			_os.makedirs(_logdir, exist_ok=True)
 			_logpath = _os.path.join(_logdir, 'game.log')
 			with open(_logpath, 'a', encoding='utf-8') as f:
@@ -1489,21 +1408,18 @@ class GameTkApp:
 		self._after_cmd(resp)
 
 	def _after_cmd(self, out_lines: list[str]):
-		# info: current status snapshot (replace); log: append-only history
+		# 统一：将“状态快照”作为 state 行追加到战斗日志
 		try:
-			self.text_info.delete('1.0', tk.END)
 			for line in out_lines or []:
-				# support structured log dicts
 				if isinstance(line, dict):
-					self._append_info(line.get('text', ''))
+					self._append_log({'type': 'state', 'text': line.get('text', ''), 'meta': {'state': True}})
 				else:
-					self._append_info(line)
+					self._append_log({'type': 'state', 'text': str(line), 'meta': {'state': True}})
 		except Exception as e:
 			self._log_exception(e, '_after_cmd_info')
 		# append to persistent log file (cross-platform) and log widget
 		try:
-			home = os.path.expanduser('~')
-			logdir = os.path.join(home, '.pyhs')
+			logdir = CFG.log_dir()
 			os.makedirs(logdir, exist_ok=True)
 			logpath = os.path.join(logdir, 'game.log')
 			with open(logpath, 'a', encoding='utf-8') as f:
@@ -1527,7 +1443,6 @@ class GameTkApp:
 				try:
 					logs = self.controller.game.pop_logs()
 					for L in logs:
-						self._append_info(L)
 						self._append_log(L)
 						try:
 							f.write(json.dumps(L, ensure_ascii=False) + "\n")
@@ -1612,9 +1527,7 @@ class GameTkApp:
 			self._append_info(line)
 		self.refresh_all(skip_info_log=True)
 		try:
-			base = os.path.join(os.path.expanduser('~'), 'AppData', 'Local', 'PYHS')
-			os.makedirs(base, exist_ok=True)
-			path = os.path.join(base, 'scene_runtime.txt')
+			path = os.path.join(CFG.user_data_dir(), 'scene_runtime.txt')
 			with open(path, 'w', encoding='utf-8') as f:
 				f.write(f"player_name: {player_name}\n")
 				f.write(f"initial_scene: {initial_scene}\n")

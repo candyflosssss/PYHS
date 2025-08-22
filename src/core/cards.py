@@ -1,5 +1,5 @@
 import random
-from ui import colors as C
+from src.ui import colors as C
 from .combatant import Combatant
 
 class Card(Combatant):
@@ -237,7 +237,7 @@ class RewardSwordCard(Card):
     
     def on_death(self, game=None, owner=None):
         """死亡时给随机队友一把木剑装备（PvE模式适配）"""
-        from systems.equipment_system import WeaponItem
+        from src.systems.equipment_system import WeaponItem
         
         # 创建木剑装备
         wooden_sword = WeaponItem("木剑", "简单的木制武器", 50, attack=2)

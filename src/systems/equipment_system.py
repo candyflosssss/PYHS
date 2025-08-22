@@ -1,5 +1,5 @@
 from .inventory import EquipmentItem
-from ui import colors as C
+from src.ui import colors as C
 
 class WeaponItem(EquipmentItem):
     """武器装备"""

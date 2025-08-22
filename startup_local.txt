@@ -1,6 +1,0 @@
-pid: 19856
-cwd: C:\Users\MoSaki\PYHS\yyy
-executable: C:\Users\MoSaki\AppData\Local\Microsoft\WindowsApps\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\python.exe
-argv: ['tk_main.py']
-frozen: False
-_MEIPASS: None

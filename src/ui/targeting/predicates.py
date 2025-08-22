@@ -62,7 +62,7 @@ def has_shield(app, src_token: str, tgt_token: str) -> bool:
         if lh is None:
             return False
         try:
-            from systems.equipment_system import ShieldItem
+            from src.systems.equipment_system import ShieldItem
             return isinstance(lh, ShieldItem)
         except Exception:
             return bool(getattr(lh, 'defense', 0)) and (getattr(lh, 'slot_type', '') == 'left_hand') and (not getattr(lh, 'is_two_handed', False))

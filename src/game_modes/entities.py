@@ -5,8 +5,8 @@
 
 from __future__ import annotations
 from typing import Callable, Optional
-from ui import colors as C
-from core.combatant import Combatant
+from src.ui import colors as C
+from src.core.combatant import Combatant
 
 
 class ResourceItem:

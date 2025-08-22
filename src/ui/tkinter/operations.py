@@ -1,5 +1,6 @@
 """Operations toolbar rendering for selected member."""
 from __future__ import annotations
+from src import app_config as CFG
 
 import tkinter as tk
 from tkinter import ttk
@@ -14,7 +15,7 @@ def _load_skill_catalog():
     if _SKILL_CATALOG_CACHE is not None:
         return _SKILL_CATALOG_CACHE
     try:
-        p = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'systems', 'skills_catalog.json'))
+        p = CFG.skills_catalog_path()
         with open(p, 'r', encoding='utf-8') as f:
             data = json.load(f)
         if isinstance(data, dict) and isinstance(data.get('skills'), list):
@@ -59,7 +60,7 @@ def render_operations(app, container: tk.Widget):
                     prof = None
             if prof:
                 try:
-                    p = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'systems', 'profession_skills.json'))
+                    p = CFG.profession_skills_path()
                     data = None
                     with open(p, 'r', encoding='utf-8') as f:
                         data = json.load(f)

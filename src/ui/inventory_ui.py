@@ -214,7 +214,7 @@ def perform_equip(player, card, item_name, item_obj):
     """执行装备操作"""
     # 确保随从有装备系统
     if not hasattr(card, 'equipment'):
-        from systems.equipment_system import EquipmentSystem
+        from src.systems.equipment_system import EquipmentSystem
         card.equipment = EquipmentSystem()
     
     # 尝试装备

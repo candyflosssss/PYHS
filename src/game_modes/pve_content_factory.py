@@ -4,7 +4,7 @@ PvE游戏内容工厂：创建敌人与资源。
 
 from __future__ import annotations
 
-from game_modes.entities import Enemy, ResourceItem
+from src.game_modes.entities import Enemy, ResourceItem
 
 
 class EnemyFactory:

@@ -1,4 +1,4 @@
-from ui import colors as C
+from src.ui import colors as C
 
 class Item:
     """物品基类"""

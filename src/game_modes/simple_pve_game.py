@@ -8,6 +8,7 @@ from typing import List
 import json
 import os
 import sys
+from src import app_config as CFG
 from src.game_modes.entities import Enemy, ResourceItem
 from src.game_modes.pve_content_factory import EnemyFactory, ResourceFactory
 from src.core.player import Player
@@ -28,18 +29,8 @@ class SimplePvEGame:
         # 场景管理：兼容源码与打包路径
         # 优先使用 <pkg>/scenes (源码运行常见)，其次使用 <pkg父>/scenes（GUI 打包可能放到根 scenes）
         pkg_base = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-        # 考虑多种运行时布局：优先尝试 PyInstaller onefile 解包目录 (sys._MEIPASS)、
-        # 然后是源码常见目录 <pkg>/scenes 与 父目录的 scenes
-        candidates = []
-        try:
-            if getattr(sys, 'frozen', False):
-                meipass = getattr(sys, '_MEIPASS', None)
-                if meipass:
-                    candidates.append(os.path.join(meipass, 'scenes'))
-                    candidates.append(os.path.join(meipass, 'yyy', 'scenes'))
-        except Exception:
-            pass
-        # 源码布局备选
+        # 首选集中配置提供的候选，其次保留历史备选以增强兼容性
+        candidates = list(CFG.scenes_roots())
         candidates.append(os.path.join(pkg_base, 'scenes'))
         candidates.append(os.path.join(os.path.dirname(pkg_base), 'scenes'))
         # 选第一个存在的，否则退回到第一个候选作为默认
@@ -88,15 +79,7 @@ class SimplePvEGame:
     # 调试用：返回内部候选场景根（按优先级）
     def _debug_scene_candidates(self) -> list[str]:
         pkg_base = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-        candidates = []
-        try:
-            if getattr(sys, 'frozen', False):
-                meipass = getattr(sys, '_MEIPASS', None)
-                if meipass:
-                    candidates.append(os.path.join(meipass, 'scenes'))
-                    candidates.append(os.path.join(meipass, 'yyy', 'scenes'))
-        except Exception:
-            pass
+        candidates = list(CFG.scenes_roots())
         candidates.append(os.path.join(pkg_base, 'scenes'))
         candidates.append(os.path.join(os.path.dirname(pkg_base), 'scenes'))
         return [os.path.abspath(p) for p in candidates]
@@ -104,8 +87,7 @@ class SimplePvEGame:
     def _write_scene_debug(self, lines: list[str]):
         """Append diagnostic lines to %LOCALAPPDATA%\PYHS\scene_debug.txt (safe, no raise)."""
         try:
-            base = os.path.join(os.path.expanduser('~'), 'AppData', 'Local', 'PYHS')
-            os.makedirs(base, exist_ok=True)
+            base = CFG.user_data_dir()
             path = os.path.join(base, 'scene_debug.txt')
             from datetime import datetime
             with open(path, 'a', encoding='utf-8') as f:
@@ -305,7 +287,7 @@ class SimplePvEGame:
     def _to_character_sheet(self, entity):
         """Map a Combatant-like entity to a minimal CharacterSheet for DND computations."""
         try:
-            from systems.dnd_rules import CharacterSheet, Attributes
+            from src.systems.dnd_rules import CharacterSheet, Attributes
         except Exception:
             return None
         try:
@@ -330,19 +312,10 @@ class SimplePvEGame:
                 # dex modifier will be computed below once attrs are available
             else:
                 cs = CharacterSheet(name)
-            # 若未指定 AC，则用 10 + defense 做基础
+            # 若未指定 AC，则用 10 + defense 作为基础（DEX 修正由 get_ac 再叠加，避免重复）
             try:
                 dfn = int(entity.get_total_defense()) if hasattr(entity, 'get_total_defense') else int(getattr(entity, 'defense', 0))
-                # compute dex modifier from attributes if present
-                dex = None
-                try:
-                    if isinstance(dnd, dict):
-                        attrs_local = dnd.get('attrs') or dnd.get('attributes') or {}
-                        dex = int(attrs_local.get('dex', attrs_local.get('DEX', 10) or 10))
-                except Exception:
-                    dex = None
-                dex_mod = (int(dex) - 10) // 2 if dex is not None else 0
-                cs.ac = 10 + dex_mod + dfn
+                cs.ac = 10 + dfn
             except Exception:
                 pass
             return cs
@@ -372,7 +345,7 @@ class SimplePvEGame:
         e = self.enemies[enemy_idx]
         # 使用 DND 规则判定命中与伤害（保留向后兼容）
         try:
-            from systems.dnd_rules import to_hit_roll, roll_damage
+            from src.systems.dnd_rules import to_hit_roll, roll_damage
         except Exception:
             to_hit_roll = None
             roll_damage = None
@@ -387,6 +360,7 @@ class SimplePvEGame:
             def_sheet = self._to_character_sheet(e)
             th = to_hit_roll(attacker=att_sheet, defender=def_sheet,
                              weapon_bonus=weapon_bonus, use_str=True, is_proficient=is_proficient)
+            th = self._enrich_to_hit(th, att_sheet, def_sheet, weapon_bonus=weapon_bonus, is_proficient=is_proficient, use_str=True, defender_entity=e)
             # 暂不单独输出 to_hit 行，改为合并到攻击摘要里；meta 仍携带
             if not th.get('hit'):
                 # 汇总一条更可读的未命中信息
@@ -400,6 +374,7 @@ class SimplePvEGame:
             dmg_spec = (1, max(1, int(m.get_total_attack()))) if hasattr(m, 'get_total_attack') else (1, 1)
             if roll_damage:
                 dmg_r = roll_damage(att_sheet, dice=dmg_spec, damage_bonus=0, critical=th.get('critical', False))
+                dmg_r = self._enrich_damage(dmg_r, att_sheet, dmg_spec, damage_bonus=0, critical=th.get('critical', False), use_str_for_damage=True)
                 dealt = int(dmg_r.get('total', 0))
             else:
                 dealt = int(m.get_total_attack() if hasattr(m, 'get_total_attack') else getattr(m, 'attack', 0))
@@ -425,10 +400,31 @@ class SimplePvEGame:
             text = f"{m} 攻击 {getattr(e,'name',e)}: 命中{crit_note}；{hit_line}；{dmg_line}；{hp_line}"
         else:
             text = f"{m} 攻击 {getattr(e,'name',e)}，造成 {dealt} 伤害（{getattr(e,'hp',0)}/{getattr(e,'max_hp',0)}）"
-        self.log({'type': 'attack', 'text': text, 'meta': {'to_hit': th, 'damage': dmg_r, 'target': {'hp_before': prev_e, 'hp_after': getattr(e,'hp',0)}}})
+        # 附带来源信息
+        src_info = {
+            'name': getattr(m, 'name', str(m)),
+            'attack': int(getattr(m, 'get_total_attack')() if hasattr(m, 'get_total_attack') else getattr(m, 'attack', 0)),
+        }
+        try:
+            eq = getattr(m, 'equipment', None)
+            if eq:
+                src_info['equipment'] = {
+                    'left_hand': getattr(getattr(eq, 'left_hand', None), 'name', None),
+                    'right_hand': getattr(getattr(eq, 'right_hand', None), 'name', None),
+                    'armor': getattr(getattr(eq, 'armor', None), 'name', None),
+                }
+        except Exception:
+            pass
+        tgt_info = {
+            'name': getattr(e, 'name', str(e)),
+            'defense': int(getattr(e, 'get_total_defense')() if hasattr(e, 'get_total_defense') else getattr(e, 'defense', 0)),
+            'hp_before': prev_e,
+            'hp_after': getattr(e, 'hp', 0),
+        }
+        self.log({'type': 'attack', 'text': text, 'meta': {'to_hit': th, 'damage': dmg_r, 'target': tgt_info, 'sources': {'attacker': src_info}}})
 
         # 反击判定：0 攻不反击、进攻方带 no_counter 不被反击
-        from systems import skills as SK
+        from src.systems import skills as SK
         try:
             if SK.should_counter(m, e):
                 prev_m = m.hp
@@ -536,7 +532,7 @@ class SimplePvEGame:
                 return False
             # 类型判断优先
             try:
-                from systems.equipment_system import ShieldItem
+                from src.systems.equipment_system import ShieldItem
                 return isinstance(lh, ShieldItem)
             except Exception:
                 # 退化：槽位为左手且防御>0 且 is_two_handed=False 视为盾
@@ -567,10 +563,85 @@ class SimplePvEGame:
         except Exception:
             return False
 
+    # --- 细化日志辅助 ---
+    def _enrich_to_hit(self, th: dict, attacker_sheet, defender_sheet, weapon_bonus: int = 0,
+                        is_proficient: bool = False, use_str: bool = True, defender_entity=None) -> dict:
+        try:
+            ab_mod = attacker_sheet.ability_mod('str' if use_str else 'dex')
+        except Exception:
+            ab_mod = 0
+        try:
+            prof = attacker_sheet.proficiency if is_proficient else 0
+        except Exception:
+            prof = 0
+        try:
+            hit_extra = int(getattr(attacker_sheet, 'bonuses', {}).get('to_hit', 0))
+        except Exception:
+            hit_extra = 0
+        try:
+            target_ac = defender_sheet.get_ac() if defender_sheet else th.get('needed')
+        except Exception:
+            target_ac = th.get('needed')
+        th['breakdown'] = {
+            'rolls': th.get('rolls'),
+            'ability_mod': ab_mod,
+            'proficiency': prof,
+            'weapon_bonus': weapon_bonus,
+            'extra_bonus': hit_extra,
+            'formula': f"d20({th.get('roll')})+{ab_mod}+{prof}+{weapon_bonus}+{hit_extra}={th.get('total')} vs AC {target_ac}",
+        }
+        # 目标 AC 组成
+        def_dfn = 0
+        if defender_entity is not None:
+            try:
+                def_dfn = int(getattr(defender_entity, 'get_total_defense')()) if hasattr(defender_entity, 'get_total_defense') else int(getattr(defender_entity, 'defense', 0))
+            except Exception:
+                def_dfn = 0
+        try:
+            dex_mod_def = defender_sheet.ability_mod('dex') if defender_sheet else 0
+        except Exception:
+            dex_mod_def = 0
+        try:
+            ac_extra = int(getattr(defender_sheet, 'bonuses', {}).get('ac', 0))
+        except Exception:
+            ac_extra = 0
+        th['target_ac'] = {
+            'base': 10 + def_dfn,
+            'defense': def_dfn,
+            'dex_mod': dex_mod_def,
+            'extra_bonus': ac_extra,
+            'final': target_ac,
+        }
+        return th
+
+    def _enrich_damage(self, dmg_r: dict, attacker_sheet, dice_spec: tuple[int, int], damage_bonus: int = 0,
+                        critical: bool = False, use_str_for_damage: bool = True) -> dict:
+        if not isinstance(dmg_r, dict):
+            return dmg_r
+        try:
+            abil = 'str' if use_str_for_damage else 'dex'
+            ab_mod = attacker_sheet.ability_mod(abil)
+        except Exception:
+            ab_mod = 0
+        try:
+            extra = int(getattr(attacker_sheet, 'bonuses', {}).get('damage', 0))
+        except Exception:
+            extra = 0
+        count, sides = dice_spec
+        dmg_r['breakdown'] = {
+            'dice_total': dmg_r.get('dice_total'),
+            'ability_mod': ab_mod,
+            'damage_bonus': int(damage_bonus or 0),
+            'extra_bonus': extra,
+            'critical': bool(critical),
+            'formula': f"{count}d{sides}({dmg_r.get('dice_total')})+{ab_mod}+{int(damage_bonus or 0)}+{extra}={dmg_r.get('total')}"
+        }
+        return dmg_r
+
     def _skill_sweep(self, src, tgt):
         """横扫：对所有敌人进行一次攻击判定并造成源攻击力的一半伤害（向下取整）。"""
         try:
-            from systems.dnd_rules import to_hit_roll, roll_damage
+            from src.systems.dnd_rules import to_hit_roll, roll_damage
         except Exception:
             to_hit_roll = roll_damage = None
         hits = []
@@ -581,7 +652,10 @@ class SimplePvEGame:
             hit = True
             meta = {}
             if to_hit_roll:
-                th = to_hit_roll(self._to_character_sheet(src), self._to_character_sheet(e), use_str=True, weapon_bonus=0, is_proficient=False)
+                att = self._to_character_sheet(src)
+                dfn = self._to_character_sheet(e)
+                th = to_hit_roll(att, dfn, use_str=True, weapon_bonus=0, is_proficient=False)
+                th = self._enrich_to_hit(th, att, dfn, weapon_bonus=0, is_proficient=False, use_str=True, defender_entity=e)
                 hit = th['hit']
                 meta['to_hit'] = th
             if hit:
@@ -589,7 +663,9 @@ class SimplePvEGame:
                 # 用 DND 掷骰描述伤害（1d(dmg_each)）
                 dmg_r = None
                 if roll_damage and dmg_each > 0:
-                    dmg_r = roll_damage(self._to_character_sheet(src), dice=(1, max(1, dmg_each)), damage_bonus=0, critical=th.get('critical', False) if isinstance(th, dict) else False)
+                    att = self._to_character_sheet(src)
+                    dmg_r = roll_damage(att, dice=(1, max(1, dmg_each)), damage_bonus=0, critical=th.get('critical', False) if isinstance(th, dict) else False)
+                    dmg_r = self._enrich_damage(dmg_r, att, (1, max(1, dmg_each)), damage_bonus=0, critical=th.get('critical', False) if isinstance(th, dict) else False, use_str_for_damage=True)
                     amount = int(dmg_r['total'])
                 else:
                     amount = dmg_each
@@ -629,13 +705,16 @@ class SimplePvEGame:
         if tgt is None:
             return False, '未选择目标'
         try:
-            from systems.dnd_rules import to_hit_roll, roll_damage
+            from src.systems.dnd_rules import to_hit_roll, roll_damage
         except Exception:
             to_hit_roll = roll_damage = None
         meta = {}
         hit = True
         if to_hit_roll:
-            th = to_hit_roll(self._to_character_sheet(src), self._to_character_sheet(tgt), use_str=True, weapon_bonus=0, is_proficient=False)
+            att = self._to_character_sheet(src)
+            dfn = self._to_character_sheet(tgt)
+            th = to_hit_roll(att, dfn, use_str=True, weapon_bonus=0, is_proficient=False)
+            th = self._enrich_to_hit(th, att, dfn, weapon_bonus=0, is_proficient=False, use_str=True, defender_entity=tgt)
             hit = th['hit']
             meta['to_hit'] = th
         if not hit:
@@ -645,6 +724,9 @@ class SimplePvEGame:
         prev = getattr(tgt, 'hp', 0)
         # 用 DND 掷骰造成伤害：1dATK
         dmg_r = roll_damage(self._to_character_sheet(src), dice=(1, max(1, atk_val)), damage_bonus=0, critical=th.get('critical', False) if isinstance(th, dict) else False) if roll_damage else None
+        if dmg_r:
+            att = self._to_character_sheet(src)
+            dmg_r = self._enrich_damage(dmg_r, att, (1, max(1, atk_val)), damage_bonus=0, critical=th.get('critical', False) if isinstance(th, dict) else False, use_str_for_damage=True)
         amount = int(dmg_r['total']) if dmg_r else atk_val
         dead = tgt.take_damage(amount)
         dealt = max(0, prev - getattr(tgt, 'hp', prev))
@@ -682,7 +764,7 @@ class SimplePvEGame:
         """
         import random
         try:
-            from systems.dnd_rules import roll_damage
+            from src.systems.dnd_rules import roll_damage
         except Exception:
             roll_damage = None
         try:
@@ -692,10 +774,12 @@ class SimplePvEGame:
                 tgt = random.choice(self.enemies)
             total = 0
             meta_all = {'bolts': []}
+            att = self._to_character_sheet(src)
             for _ in range(3):
                 prev = getattr(tgt, 'hp', 0)
                 if roll_damage:
-                    dmg_r = roll_damage(self._to_character_sheet(src), dice=(1, 4), damage_bonus=1, critical=False)
+                    dmg_r = roll_damage(att, dice=(1, 4), damage_bonus=1, critical=False)
+                    dmg_r = self._enrich_damage(dmg_r, att, (1, 4), damage_bonus=1, critical=False, use_str_for_damage=True)
                     amount = int(dmg_r['total'])
                 else:
                     r = random.randint(1, 4) + 1
@@ -725,7 +809,7 @@ class SimplePvEGame:
         if tgt is None:
             return False, '未选择目标'
         try:
-            from systems.dnd_rules import to_hit_roll, roll_damage
+            from src.systems.dnd_rules import to_hit_roll, roll_damage
         except Exception:
             to_hit_roll = roll_damage = None
         str_mod = (self._get_attr(src, 'str') - 10) // 2
@@ -761,7 +845,7 @@ class SimplePvEGame:
         """血腥优先：若未选目标，则自动选择当前生命最低的敌人；命中后造成 1dATK 伤害，若击杀，治疗自身2点。"""
         import math
         try:
-            from systems.dnd_rules import to_hit_roll, roll_damage
+            from src.systems.dnd_rules import to_hit_roll, roll_damage
         except Exception:
             to_hit_roll = roll_damage = None
         # 自动选择
@@ -809,7 +893,7 @@ class SimplePvEGame:
         if tgt is None:
             return False, '未选择目标'
         try:
-            from systems.dnd_rules import to_hit_roll, roll_damage
+            from src.systems.dnd_rules import to_hit_roll, roll_damage
         except Exception:
             to_hit_roll = roll_damage = None
         # 判定是否法师
@@ -856,7 +940,7 @@ class SimplePvEGame:
     def _skill_mass_intimidate(self, src, tgt):
         """群体恐吓：对所有敌人进行一次对抗检定（CHA vs WIS），成功则记录其被震慑。"""
         try:
-            from systems.dnd_rules import roll_d20
+            from src.systems.dnd_rules import roll_d20
         except Exception:
             roll_d20 = None
         cha_mod = (self._get_attr(src, 'cha') - 10) // 2
@@ -880,14 +964,17 @@ class SimplePvEGame:
         if tgt is None:
             return False, '未选择目标'
         try:
-            from systems.dnd_rules import to_hit_roll, roll_damage
+            from src.systems.dnd_rules import to_hit_roll, roll_damage
         except Exception:
             to_hit_roll = roll_damage = None
         meta = {}
         hit = True
         th = None
         if to_hit_roll:
-            th = to_hit_roll(self._to_character_sheet(src), self._to_character_sheet(tgt), use_str=True, weapon_bonus=0, is_proficient=False, advantage=True)
+            att = self._to_character_sheet(src)
+            dfn = self._to_character_sheet(tgt)
+            th = to_hit_roll(att, dfn, use_str=True, weapon_bonus=0, is_proficient=False, advantage=True)
+            th = self._enrich_to_hit(th, att, dfn, weapon_bonus=0, is_proficient=False, use_str=True, defender_entity=tgt)
             hit = th.get('hit', True)
             meta['to_hit'] = th
         if not hit:
@@ -896,7 +983,9 @@ class SimplePvEGame:
         atk_val = int(src.get_total_attack() if hasattr(src, 'get_total_attack') else getattr(src, 'attack', 1))
         dmg_r = None
         if roll_damage:
-            dmg_r = roll_damage(self._to_character_sheet(src), dice=(1, max(1, atk_val)), damage_bonus=0, critical=th.get('critical', False) if isinstance(th, dict) else False)
+            att = self._to_character_sheet(src)
+            dmg_r = roll_damage(att, dice=(1, max(1, atk_val)), damage_bonus=0, critical=th.get('critical', False) if isinstance(th, dict) else False)
+            dmg_r = self._enrich_damage(dmg_r, att, (1, max(1, atk_val)), damage_bonus=0, critical=th.get('critical', False) if isinstance(th, dict) else False, use_str_for_damage=True)
             amount = int(dmg_r.get('total', atk_val))
         else:
             amount = atk_val
@@ -918,7 +1007,7 @@ class SimplePvEGame:
             return False, '未选择目标'
         # 命中检定（可选）
         try:
-            from systems.dnd_rules import to_hit_roll
+            from src.systems.dnd_rules import to_hit_roll
         except Exception:
             to_hit_roll = None
         hit = True
@@ -944,14 +1033,17 @@ class SimplePvEGame:
         if tgt is None:
             return False, '未选择目标'
         try:
-            from systems.dnd_rules import to_hit_roll, roll_damage
+            from src.systems.dnd_rules import to_hit_roll, roll_damage
         except Exception:
             to_hit_roll = roll_damage = None
         meta = {}
         hit = True
         th = None
         if to_hit_roll:
-            th = to_hit_roll(self._to_character_sheet(src), self._to_character_sheet(tgt), use_str=True)
+            att = self._to_character_sheet(src)
+            dfn = self._to_character_sheet(tgt)
+            th = to_hit_roll(att, dfn, use_str=True)
+            th = self._enrich_to_hit(th, att, dfn, weapon_bonus=0, is_proficient=False, use_str=True, defender_entity=tgt)
             hit = th.get('hit', True)
             meta['to_hit'] = th
         if not hit:
@@ -966,7 +1058,9 @@ class SimplePvEGame:
         dmg_r = None
         amount = max(1, atk_val // 2 + bonus)
         if roll_damage:
-            dmg_r = roll_damage(self._to_character_sheet(src), dice=(1, max(1, amount)), damage_bonus=0, critical=th.get('critical', False) if isinstance(th, dict) else False)
+            att = self._to_character_sheet(src)
+            dmg_r = roll_damage(att, dice=(1, max(1, amount)), damage_bonus=0, critical=th.get('critical', False) if isinstance(th, dict) else False)
+            dmg_r = self._enrich_damage(dmg_r, att, (1, max(1, amount)), damage_bonus=0, critical=th.get('critical', False) if isinstance(th, dict) else False, use_str_for_damage=True)
             amount = int(dmg_r.get('total', amount))
         prev = getattr(tgt, 'hp', 0)
         dead = tgt.take_damage(amount)
@@ -985,7 +1079,7 @@ class SimplePvEGame:
         if tgt is None:
             return False, '未选择目标'
         try:
-            from systems.dnd_rules import to_hit_roll, roll_damage
+            from src.systems.dnd_rules import to_hit_roll, roll_damage
         except Exception:
             to_hit_roll = roll_damage = None
         dual = self._has_dual_wield(tgt)
@@ -993,7 +1087,10 @@ class SimplePvEGame:
         hit = True
         th = None
         if to_hit_roll:
-            th = to_hit_roll(self._to_character_sheet(src), self._to_character_sheet(tgt), use_str=True, advantage=dual)
+            att = self._to_character_sheet(src)
+            dfn = self._to_character_sheet(tgt)
+            th = to_hit_roll(att, dfn, use_str=True, advantage=dual)
+            th = self._enrich_to_hit(th, att, dfn, weapon_bonus=0, is_proficient=False, use_str=True, defender_entity=tgt)
             hit = th.get('hit', True)
             meta['to_hit'] = th
         if not hit:
@@ -1003,7 +1100,9 @@ class SimplePvEGame:
         bonus = 2 if dual else 0
         dmg_r = None
         if roll_damage:
-            dmg_r = roll_damage(self._to_character_sheet(src), dice=(1, max(1, atk_val)), damage_bonus=bonus, critical=th.get('critical', False) if isinstance(th, dict) else False)
+            att = self._to_character_sheet(src)
+            dmg_r = roll_damage(att, dice=(1, max(1, atk_val)), damage_bonus=bonus, critical=th.get('critical', False) if isinstance(th, dict) else False)
+            dmg_r = self._enrich_damage(dmg_r, att, (1, max(1, atk_val)), damage_bonus=bonus, critical=th.get('critical', False) if isinstance(th, dict) else False, use_str_for_damage=True)
             amount = int(dmg_r.get('total', atk_val + bonus))
         else:
             amount = atk_val + bonus
@@ -1041,7 +1140,7 @@ class SimplePvEGame:
         if tgt is None:
             return False, '未选择目标'
         try:
-            from systems.dnd_rules import roll_damage
+            from src.systems.dnd_rules import roll_damage
         except Exception:
             roll_damage = None
         if self._get_attr(src, 'int') < self._get_attr(tgt, 'int'):
@@ -1050,8 +1149,11 @@ class SimplePvEGame:
         int_mod = (self._get_attr(src, 'int') - 10) // 2
         dmg_r = None
         if roll_damage:
-            dmg_r = roll_damage(self._to_character_sheet(src), dice=(1, 6), damage_bonus=max(0, int_mod), critical=False)
-            amount = int(dmg_r.get('total', 1 + max(0, int_mod)))
+            att = self._to_character_sheet(src)
+            dmgb = max(0, int_mod)
+            dmg_r = roll_damage(att, dice=(1, 6), damage_bonus=dmgb, critical=False)
+            dmg_r = self._enrich_damage(dmg_r, att, (1, 6), damage_bonus=dmgb, critical=False, use_str_for_damage=True)
+            amount = int(dmg_r.get('total', 1 + dmgb))
         else:
             amount = 1 + max(0, int_mod)
         prev = getattr(tgt, 'hp', 0)
@@ -1090,14 +1192,16 @@ class SimplePvEGame:
             return True, '处决完成'
         # 否则造成中等伤害：ATK 的一半 +1
         try:
-            from systems.dnd_rules import roll_damage
+            from src.systems.dnd_rules import roll_damage
         except Exception:
             roll_damage = None
         atk_val = int(src.get_total_attack() if hasattr(src, 'get_total_attack') else getattr(src, 'attack', 1))
         base = max(1, atk_val // 2 + 1)
         dmg_r = None
         if roll_damage:
-            dmg_r = roll_damage(self._to_character_sheet(src), dice=(1, base), damage_bonus=0, critical=False)
+            att = self._to_character_sheet(src)
+            dmg_r = roll_damage(att, dice=(1, base), damage_bonus=0, critical=False)
+            dmg_r = self._enrich_damage(dmg_r, att, (1, base), damage_bonus=0, critical=False, use_str_for_damage=True)
             amount = int(dmg_r.get('total', base))
         else:
             amount = base
@@ -1344,16 +1448,17 @@ class SimplePvEGame:
                         prof = md.get('profession') or md.get('class') or md.get('job')
                     if prof:
                         try:
-                            ppath = os.path.join(os.path.dirname(__file__), '..', 'systems', 'profession_skills.json')
+                            # 集中配置的职业技能映射表
+                            ppath = CFG.profession_skills_path()
                             # try package-local first
-                            pj = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'systems', 'profession_skills.json'))
+                            pj = CFG.profession_skills_path()
                             data = None
                             try:
                                 with open(pj, 'r', encoding='utf-8') as f:
                                     data = json.load(f)
                             except Exception:
                                 try:
-                                    with open(os.path.join(os.path.dirname(__file__), '..', 'systems', 'profession_skills.json'), 'r', encoding='utf-8') as f:
+                                    with open(CFG.profession_skills_path(), 'r', encoding='utf-8') as f:
                                         data = json.load(f)
                                 except Exception:
                                     data = None
@@ -1416,7 +1521,7 @@ class SimplePvEGame:
         - 兼容简写：若直接是对象且包含 type/name，则按单件装备处理
         """
         try:
-            from systems.equipment_system import WeaponItem, ArmorItem, ShieldItem
+            from src.systems.equipment_system import WeaponItem, ArmorItem, ShieldItem
         except Exception:
             return
 

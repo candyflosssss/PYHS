@@ -1,4 +1,5 @@
-from ui.tkinter import run_tk
+from src.ui.tkinter import run_tk
+from src import app_config as CFG
 import sys
 import os
 
@@ -19,28 +20,14 @@ def _write_startup_marker():
         except Exception:
             lines.append("_MEIPASS: <err>")
 
-        # 尝试写入多个位置以提高命中概率：%LOCALAPPDATA%、%TEMP%、当前工作目录
-        try:
-            base = os.path.join(os.path.expanduser('~'), 'AppData', 'Local', 'PYHS')
-            os.makedirs(base, exist_ok=True)
-            p = os.path.join(base, 'startup.txt')
-            with open(p, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(lines) + '\n')
-        except Exception:
-            pass
-        try:
-            tmp = os.getenv('TEMP') or os.path.join(os.path.expanduser('~'), 'AppData', 'Local', 'Temp')
-            p2 = os.path.join(tmp, 'pyhs_startup.txt')
-            with open(p2, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(lines) + '\n')
-        except Exception:
-            pass
-        try:
-            p3 = os.path.join(os.getcwd(), 'startup_local.txt')
-            with open(p3, 'w', encoding='utf-8') as f:
-                f.write('\n'.join(lines) + '\n')
-        except Exception:
-            pass
+        # 使用集中配置提供的候选路径，逐个尝试
+        for _p in CFG.startup_local_candidates():
+            try:
+                with open(_p, 'w', encoding='utf-8') as f:
+                    f.write('\n'.join(lines) + '\n')
+                break
+            except Exception:
+                continue
         # 弹窗提示（确保用户能看到 EXE 已启动）
         try:
             import ctypes

@@ -1,5 +1,5 @@
 from .cards import draw_card, BattlecryCard, CombinedCard, WindfuryCard
-from systems.inventory import Inventory
+from src.systems.inventory import Inventory
 
 class Player:
     def __init__(self, name, is_me=True, game=None, inventory_size=20):

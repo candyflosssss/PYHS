@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from systems.equipment_system import EquipmentSystem
+from src.systems.equipment_system import EquipmentSystem
 
 
 class Combatant:
