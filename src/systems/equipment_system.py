@@ -1,4 +1,5 @@
 from .inventory import EquipmentItem
+from src.core.events import publish as publish_event
 from src.ui import colors as C
 
 class WeaponItem(EquipmentItem):
@@ -86,6 +87,10 @@ class EquipmentSystem:
                 return_item(self.armor)
             self.armor = equipment
             self._log(game, f"装备盔甲: {equipment}")
+            try:
+                publish_event('equipment_changed', {'slot': 'armor', 'item': equipment, 'owner': getattr(self, 'owner', None)})
+            except Exception:
+                pass
             return True
 
         # 双手武器
@@ -100,6 +105,10 @@ class EquipmentSystem:
             self.left_hand = equipment
             self.right_hand = None
             self._log(game, f"装备双手武器: {equipment}")
+            try:
+                publish_event('equipment_changed', {'slot': 'both_hands', 'item': equipment, 'owner': getattr(self, 'owner', None)})
+            except Exception:
+                pass
             return True
 
         # 单手左手武器
@@ -112,6 +121,10 @@ class EquipmentSystem:
                 return_item(self.left_hand)
             self.left_hand = equipment
             self._log(game, f"装备左手: {equipment}")
+            try:
+                publish_event('equipment_changed', {'slot': 'left_hand', 'item': equipment, 'owner': getattr(self, 'owner', None)})
+            except Exception:
+                pass
             return True
 
         # 单手右手武器
@@ -124,6 +137,10 @@ class EquipmentSystem:
                 return_item(self.right_hand)
             self.right_hand = equipment
             self._log(game, f"装备右手: {equipment}")
+            try:
+                publish_event('equipment_changed', {'slot': 'right_hand', 'item': equipment, 'owner': getattr(self, 'owner', None)})
+            except Exception:
+                pass
             return True
 
         # 未知槽位
@@ -139,6 +156,11 @@ class EquipmentSystem:
             removed, self.right_hand = self.right_hand, None
         elif slot == "armor":
             removed, self.armor = self.armor, None
+        try:
+            if removed:
+                publish_event('equipment_changed', {'slot': slot, 'item': None, 'removed': removed, 'owner': getattr(self, 'owner', None)})
+        except Exception:
+            pass
         return removed
     
     def get_total_attack(self):

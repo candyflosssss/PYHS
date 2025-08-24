@@ -14,6 +14,8 @@ from src.game_modes.pve_content_factory import EnemyFactory, ResourceFactory
 from src.core.player import Player
 from src.core.cards import NormalCard
 from src.ui import colors as C
+from src.core.events import publish as publish_event
+from src.core.zone import ObservableList
 
 
 class SimplePvEGame:
@@ -22,8 +24,16 @@ class SimplePvEGame:
         self.player = Player(player_name, is_me=True, game=self)
         self.turn = 1
         self.running = True
-        self.enemies: list = []
-        self.resources: list = []
+        self.enemies: ObservableList = ObservableList(
+            [],
+            on_add='enemy_added', on_remove='enemy_removed', on_clear='enemies_cleared', on_reset='enemies_reset', on_change='enemies_changed',
+            to_payload=lambda e: getattr(e, 'name', str(e))
+        )
+        self.resources: ObservableList = ObservableList(
+            [],
+            on_add='resource_added', on_remove='resource_removed', on_clear='resources_cleared', on_reset='resources_reset', on_change='resources_changed',
+            to_payload=lambda r: getattr(r, 'name', str(r))
+        )
         # 日志缓冲（控制器会读取并清空）
         self._log_buffer: list[str] = []
         # 场景管理：兼容源码与打包路径
@@ -85,7 +95,7 @@ class SimplePvEGame:
         return [os.path.abspath(p) for p in candidates]
 
     def _write_scene_debug(self, lines: list[str]):
-        """Append diagnostic lines to %LOCALAPPDATA%\PYHS\scene_debug.txt (safe, no raise)."""
+        r"""Append diagnostic lines to %LOCALAPPDATA%\PYHS\scene_debug.txt (safe, no raise)."""
         try:
             base = CFG.user_data_dir()
             path = os.path.join(base, 'scene_debug.txt')
@@ -208,8 +218,10 @@ class SimplePvEGame:
 
         # 清空/保留
         preserved_board = list(self.player.board) if eff_keep else []
-        self.enemies = []
-        self.resources = []
+        # 重置敌人与资源为本场景定义
+        self.enemies.clear()
+        self.resources.clear()
+        # 重置我方随从与手牌（场景模式不自动发起手牌）
         self.player.board.clear()
         self.player.hand.clear()  # 场景模式不自动发起手牌
 
@@ -235,7 +247,11 @@ class SimplePvEGame:
                 if m is not None:
                     self.player.board.append(m)
 
-    # 注意：不进行任何自动配装，完全以场景/玩家操作为准
+        # 通知资源区已重置（UI 只订阅 resource_changed）
+        try:
+            publish_event('resource_changed', {'action': 'reset', 'size': len(self.resources)})
+        except Exception:
+            pass
 
         # 使用更友好的标题进行日志
         shown = self.current_scene_title or os.path.basename(scene_path)
@@ -267,6 +283,14 @@ class SimplePvEGame:
         if ok:
             # 切换场景后，回合不变，仅刷新随从可攻击标记
             self.start_turn()
+            # 发布场景切换事件
+            try:
+                publish_event('scene_changed', {
+                    'scene_path': self.current_scene,
+                    'scene_title': self.current_scene_title,
+                })
+            except Exception:
+                pass
         return ok
 
     def get_state(self):
@@ -437,23 +461,10 @@ class SimplePvEGame:
             pass
         m.can_attack = False
         if dead:
-            # 若死亡效果触发场景切换，需避免继续操作已被重置的敌人列表
-            prev_scene = self.current_scene
-            # 亡语可能依赖多人接口，这里容错
-            try:
-                e.on_death(self)
-            except Exception:
-                pass
-            # 若场景已发生变化（例如触发切换），直接返回
-            if self.current_scene != prev_scene:
+            # 统一死亡处理：触发亡语/掉落、事件与安全移除
+            changed = self._handle_enemy_death(e)
+            if changed:
                 return True, '攻击成功'
-            # 否则按常规流程移除该敌人
-            try:
-                self.enemies.pop(enemy_idx)
-            except Exception:
-                # 防御性：索引可能已失效
-                pass
-            self.log(f"{e.name} 被消灭")
         if m.hp <= 0:
             self.player.board.remove(m)
         # 若清场且存在 on_clear 兜底切换，则尝试执行
@@ -488,7 +499,14 @@ class SimplePvEGame:
                     mi = int(target_token[1:]) - 1
                     if 0 <= mi < len(self.player.board):
                         tgt = self.player.board[mi]
-            return func(src, tgt)
+            result = func(src, tgt)
+            # 技能结束后若清场，触发场景切换（如有定义）
+            try:
+                if not self.enemies:
+                    self._check_on_clear_transition()
+            except Exception:
+                pass
+            return result
         except Exception as e:
             try:
                 self.log({'type': 'error', 'text': f'技能执行出错: {e}', 'meta': {}})
@@ -556,6 +574,10 @@ class SimplePvEGame:
                 # 退化：加入资源区（以字符串形式展示）
                 try:
                     self.resource_zone.append(it)
+                    try:
+                        publish_event('resource_changed', {'action': 'add', 'resource': str(it)})
+                    except Exception:
+                        pass
                 except Exception:
                     pass
             self.log({'type': 'loot', 'text': f"{getattr(target,'name',target)} 掉落了 {getattr(it,'name',str(it))}", 'meta': {}})
@@ -638,6 +660,40 @@ class SimplePvEGame:
         }
         return dmg_r
 
+    # --- 统一敌人死亡处理 ---
+    def _handle_enemy_death(self, enemy) -> bool:
+        """处理敌人死亡：触发亡语/掉落，必要时移除，并记录日志。
+        返回 True 表示亡语期间发生了场景切换。"""
+        prev_scene = self.current_scene
+        # 触发亡语等
+        try:
+            enemy.on_death(self)
+        except Exception:
+            pass
+        # 若期间发生场景切换，直接返回
+        if self.current_scene != prev_scene:
+            try:
+                publish_event('enemy_died', {'enemy': enemy, 'scene_changed': True})
+            except Exception:
+                pass
+            return True
+        # 正常从列表移除
+        try:
+            if enemy in self.enemies:
+                self.enemies.remove(enemy)
+        except Exception:
+            pass
+        try:
+            self.log(f"{getattr(enemy,'name',enemy)} 被消灭")
+        except Exception:
+            pass
+        # 发布事件
+        try:
+            publish_event('enemy_died', {'enemy': enemy, 'scene_changed': False})
+        except Exception:
+            pass
+        return False
+
     def _skill_sweep(self, src, tgt):
         """横扫：对所有敌人进行一次攻击判定并造成源攻击力的一半伤害（向下取整）。"""
         try:
@@ -651,6 +707,7 @@ class SimplePvEGame:
             # simple to-hit
             hit = True
             meta = {}
+            th = None  # ensure defined even if roll_damage exists but to_hit_roll is None
             if to_hit_roll:
                 att = self._to_character_sheet(src)
                 dfn = self._to_character_sheet(e)
@@ -675,8 +732,15 @@ class SimplePvEGame:
                 meta['target'] = {'hp_before': prev, 'hp_after': e.hp}
                 self.log({'type': 'skill', 'text': f"{src} 使用 横扫 对 {e.name} 造成 {dealt} 伤害", 'meta': meta})
                 if dead:
+                    changed = self._handle_enemy_death(e)
+                    if changed:
+                        src.can_attack = False
+                        return True, '横扫 执行完毕'
+                    # 若清场（所有敌人被横扫击杀），立即按 on_clear 跳转
                     try:
-                        e.on_death(self)
+                        if not self.enemies and self._check_on_clear_transition():
+                            src.can_attack = False
+                            return True, '横扫 执行完毕'
                     except Exception:
                         pass
             else:
@@ -710,12 +774,13 @@ class SimplePvEGame:
             to_hit_roll = roll_damage = None
         meta = {}
         hit = True
+        th = None
         if to_hit_roll:
             att = self._to_character_sheet(src)
             dfn = self._to_character_sheet(tgt)
             th = to_hit_roll(att, dfn, use_str=True, weapon_bonus=0, is_proficient=False)
             th = self._enrich_to_hit(th, att, dfn, weapon_bonus=0, is_proficient=False, use_str=True, defender_entity=tgt)
-            hit = th['hit']
+            hit = th.get('hit', True)
             meta['to_hit'] = th
         if not hit:
             self.log({'type': 'skill', 'text': f"{src} 的 汲取 未命中 {getattr(tgt,'name',tgt)}", 'meta': meta})
@@ -738,6 +803,10 @@ class SimplePvEGame:
                 src.hp = min(getattr(src, 'max_hp', getattr(src, 'hp', 0) + dealt), getattr(src, 'hp', 0) + dealt)
             except Exception:
                 pass
+        if dead and tgt in self.enemies:
+            changed = self._handle_enemy_death(tgt)
+            if changed:
+                return True, '汲取完成'
         meta['damage'] = dmg_r
         meta['lifesteal'] = dealt
         meta['target'] = {'hp_before': prev, 'hp_after': getattr(tgt, 'hp', prev)}
@@ -792,10 +861,10 @@ class SimplePvEGame:
                 meta_all['bolts'].append(bolt_meta)
                 self.log({'type': 'skill', 'text': f"{src} 的 奥术飞弹 对 {getattr(tgt,'name',tgt)} 造成 {dealt} 点伤害", 'meta': bolt_meta})
                 if dead:
-                    try:
-                        tgt.on_death(self)
-                    except Exception:
-                        pass
+                    if tgt in self.enemies:
+                        changed = self._handle_enemy_death(tgt)
+                        if changed:
+                            return True, '奥术飞弹 完成'
                     break
             meta_all['total'] = total
             self.log({'type': 'skill', 'text': f"奥术飞弹 总计造成 {total} 点伤害", 'meta': meta_all})
@@ -834,11 +903,10 @@ class SimplePvEGame:
         dealt = max(0, prev - getattr(tgt, 'hp', prev))
         meta['damage'] = dmg_r
         self.log({'type': 'skill', 'text': f"{src} 使用 力量猛击 对 {getattr(tgt,'name',tgt)} 造成 {dealt} 伤害", 'meta': meta})
-        if dead:
-            try:
-                tgt.on_death(self)
-            except Exception:
-                pass
+        if dead and tgt in self.enemies:
+            changed = self._handle_enemy_death(tgt)
+            if changed:
+                return True, '力量猛击 完成'
         return True, '力量猛击 完成'
 
     def _skill_bloodlust_priority(self, src, tgt):
@@ -875,11 +943,10 @@ class SimplePvEGame:
         dealt = max(0, prev - getattr(tgt, 'hp', prev))
         meta['damage'] = dmg_r
         self.log({'type': 'skill', 'text': f"{src} 的 血腥优先 对 {getattr(tgt,'name',tgt)} 造成 {dealt} 伤害", 'meta': meta})
-        if dead:
-            try:
-                tgt.on_death(self)
-            except Exception:
-                pass
+        if dead and tgt in self.enemies:
+            changed = self._handle_enemy_death(tgt)
+            if changed:
+                return True, '血腥优先 完成'
             # 击杀回复
             try:
                 src.heal(2)
@@ -930,11 +997,10 @@ class SimplePvEGame:
         dealt = max(0, prev - getattr(tgt, 'hp', prev))
         meta['damage'] = dmg_r
         self.log({'type': 'skill', 'text': f"{src} 的 斩杀法师 对 {getattr(tgt,'name',tgt)} 造成 {dealt} 伤害", 'meta': meta})
-        if dead:
-            try:
-                tgt.on_death(self)
-            except Exception:
-                pass
+        if dead and tgt in self.enemies:
+            changed = self._handle_enemy_death(tgt)
+            if changed:
+                return True, '斩杀法师 完成'
         return True, '斩杀法师 完成'
 
     def _skill_mass_intimidate(self, src, tgt):
@@ -994,11 +1060,10 @@ class SimplePvEGame:
         dealt = max(0, prev - getattr(tgt, 'hp', prev))
         meta['damage'] = dmg_r
         self.log({'type': 'skill', 'text': f"{src} 的 精准打击 对 {getattr(tgt,'name',tgt)} 造成 {dealt} 伤害", 'meta': meta})
-        if dead:
-            try:
-                tgt.on_death(self)
-            except Exception:
-                pass
+        if dead and tgt in self.enemies:
+            changed = self._handle_enemy_death(tgt)
+            if changed:
+                return True, '精准打击 完成'
         return True, '精准打击 完成'
 
     def _skill_disarm(self, src, tgt):
@@ -1067,11 +1132,10 @@ class SimplePvEGame:
         dealt = max(0, prev - getattr(tgt, 'hp', prev))
         meta['damage'] = dmg_r
         self.log({'type': 'skill', 'text': f"{src} 的 破盾 对 {getattr(tgt,'name',tgt)} 造成 {dealt} 伤害", 'meta': meta})
-        if dead:
-            try:
-                tgt.on_death(self)
-            except Exception:
-                pass
+        if dead and tgt in self.enemies:
+            changed = self._handle_enemy_death(tgt)
+            if changed:
+                return True, '破盾 完成'
         return True, '破盾 完成'
 
     def _skill_dual_wield_bane(self, src, tgt):
@@ -1111,11 +1175,10 @@ class SimplePvEGame:
         dealt = max(0, prev - getattr(tgt, 'hp', prev))
         meta['damage'] = dmg_r
         self.log({'type': 'skill', 'text': f"{src} 的 双刀克星 对 {getattr(tgt,'name',tgt)} 造成 {dealt} 伤害", 'meta': meta})
-        if dead:
-            try:
-                tgt.on_death(self)
-            except Exception:
-                pass
+        if dead and tgt in self.enemies:
+            changed = self._handle_enemy_death(tgt)
+            if changed:
+                return True, '双刀克星 完成'
         return True, '双刀克星 完成'
 
     def _skill_mind_over_matter(self, src, tgt):
@@ -1128,11 +1191,10 @@ class SimplePvEGame:
         dead = tgt.take_damage(amount)
         dealt = max(0, prev - getattr(tgt, 'hp', prev))
         self.log({'type': 'skill', 'text': f"{src} 的 强于心智 对 {getattr(tgt,'name',tgt)} 造成 {dealt} 精神伤害", 'meta': {'psychic': True}})
-        if dead:
-            try:
-                tgt.on_death(self)
-            except Exception:
-                pass
+        if dead and tgt in self.enemies:
+            changed = self._handle_enemy_death(tgt)
+            if changed:
+                return True, '强于心智 完成'
         return True, '强于心智 完成'
 
     def _skill_trial_of_wisdom(self, src, tgt):
@@ -1160,11 +1222,10 @@ class SimplePvEGame:
         dead = tgt.take_damage(amount)
         dealt = max(0, prev - getattr(tgt, 'hp', prev))
         self.log({'type': 'skill', 'text': f"{src} 的 智慧试炼 对 {getattr(tgt,'name',tgt)} 造成 {dealt} 伤害", 'meta': {'damage': dmg_r}})
-        if dead:
-            try:
-                tgt.on_death(self)
-            except Exception:
-                pass
+        if dead and tgt in self.enemies:
+            changed = self._handle_enemy_death(tgt)
+            if changed:
+                return True, '智慧试炼 完成'
         return True, '智慧试炼 完成'
 
     def _skill_execute_wounded(self, src, tgt):
@@ -1185,10 +1246,10 @@ class SimplePvEGame:
             except Exception:
                 tgt.hp = 0
             self.log({'type': 'skill', 'text': f"{src} 的 重伤补刀 处决了 {getattr(tgt,'name',tgt)}", 'meta': {'execute': True, 'hp_before': prev}})
-            try:
-                tgt.on_death(self)
-            except Exception:
-                pass
+            if tgt in self.enemies:
+                changed = self._handle_enemy_death(tgt)
+                if changed:
+                    return True, '处决完成'
             return True, '处决完成'
         # 否则造成中等伤害：ATK 的一半 +1
         try:
@@ -1209,11 +1270,10 @@ class SimplePvEGame:
         dead = tgt.take_damage(amount)
         dealt = max(0, prev - getattr(tgt, 'hp', prev))
         self.log({'type': 'skill', 'text': f"{src} 的 重伤补刀 对 {getattr(tgt,'name',tgt)} 造成 {dealt} 伤害", 'meta': {'damage': dmg_r}})
-        if dead:
-            try:
-                tgt.on_death(self)
-            except Exception:
-                pass
+        if dead and tgt in self.enemies:
+            changed = self._handle_enemy_death(tgt)
+            if changed:
+                return True, '重伤补刀 完成'
         return True, '重伤补刀 完成'
 
     def _skill_fair_distribution(self, src, tgt):
@@ -1232,10 +1292,9 @@ class SimplePvEGame:
             dealt = max(0, prev - getattr(e, 'hp', prev))
             self.log({'type': 'skill', 'text': f"{src} 的 公平分配 对 {getattr(e,'name',e)} 造成 {dealt} 伤害", 'meta': {'each': each}})
             if dead:
-                try:
-                    e.on_death(self)
-                except Exception:
-                    pass
+                changed = self._handle_enemy_death(e)
+                if changed:
+                    return True, '公平分配 完成'
         return True, '公平分配 完成'
 
     # Boss 攻击逻辑已移除（场景模式无 Boss）
@@ -1337,6 +1396,10 @@ class SimplePvEGame:
                             if res is not None:
                                 try:
                                     game.resource_zone.append(res)
+                                    try:
+                                        publish_event('resource_changed', {'action': 'add', 'resource': str(res)})
+                                    except Exception:
+                                        pass
                                 except Exception:
                                     pass
                 e = Enemy(name or '敌人', atk, hp, death_effect)
@@ -1398,6 +1461,11 @@ class SimplePvEGame:
             if isinstance(oc, dict) and oc.get('action') == 'transition':
                 to_scene = oc.get('to')
                 preserve = bool(oc.get('preserve_board', True))
+                # 结构化日志：明确清场触发切换
+                try:
+                    self.log({'type': 'info', 'text': f"清场，切换至 {to_scene}", 'meta': {'on_clear': True, 'to': to_scene, 'preserve_board': preserve}})
+                except Exception:
+                    pass
                 return bool(self.transition_to_scene(to_scene, preserve_board=preserve))
         except Exception:
             pass

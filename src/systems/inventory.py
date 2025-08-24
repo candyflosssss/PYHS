@@ -1,4 +1,5 @@
 from src.ui import colors as C
+from src.core.events import publish as publish_event
 
 class Item:
     """物品基类"""
@@ -118,6 +119,10 @@ class Inventory:
                     pass
         if added_total > 0:
             _emit(f"添加到背包: {item.name} x{added_total}")
+            try:
+                publish_event('inventory_changed', {'action': 'add', 'item': item, 'quantity': added_total})
+            except Exception:
+                pass
         if remaining_quantity > 0:
             _emit(f"背包空间不足，无法添加: {item.name} x{remaining_quantity}")
         
@@ -157,7 +162,10 @@ class Inventory:
                     print(f"从背包移除: {item_name} x{removed_total}")
                 except Exception:
                     pass
-        
+            try:
+                publish_event('inventory_changed', {'action': 'remove', 'item_name': item_name, 'quantity': removed_total})
+            except Exception:
+                pass
         return removed_total
     
     def get_item_count(self, item_name):
@@ -199,6 +207,10 @@ class Inventory:
                 game.log("背包已清空")
             else:
                 print("背包已清空")
+        except Exception:
+            pass
+        try:
+            publish_event('inventory_changed', {'action': 'clear'})
         except Exception:
             pass
     
@@ -264,6 +276,10 @@ class Inventory:
                     pretty = str(item)
                 except Exception:
                     pretty = item.name
+                try:
+                    publish_event('inventory_changed', {'action': 'equip_use', 'item_name': item.name, 'target': target})
+                except Exception:
+                    pass
                 return True, f"为 {target} 装备了 {pretty}"
 
             # 消耗品
@@ -286,6 +302,10 @@ class Inventory:
             # 其他物品类型暂不支持使用
 
         if used > 0:
+            try:
+                publish_event('inventory_changed', {'action': 'use', 'item_name': item_name, 'quantity': used})
+            except Exception:
+                pass
             return True, f"已使用 {item_name} x{used}"
         return False, f"未找到可使用的 {item_name}"
 

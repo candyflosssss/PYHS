@@ -73,9 +73,12 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
     except Exception:
         ac_val = 10 + int(eq_def)
     # 使用 ASCII 文本，避免表情符号在 Windows 上导致的行高扩大；并采用 Tiny.TLabel 样式（8pt）
-    ttk.Label(stats, text=f"ATK {total_atk}", foreground="#E6B800", style="Tiny.TLabel").grid(row=0, column=0, sticky='w', padx=0, pady=(0, 0))
-    ttk.Label(stats, text=f"HP {cur_hp}/{max_hp}", foreground="#27ae60" if cur_hp > 0 else "#c0392b", style="Tiny.TLabel").grid(row=1, column=0, sticky='w', padx=0, pady=(0, 0))
-    ttk.Label(stats, text=f"AC {ac_val}", foreground="#2980b9", style="Tiny.TLabel").grid(row=2, column=0, sticky='w', padx=0, pady=(0, 0))
+    atk_var = tk.StringVar(value=f"ATK {total_atk}")
+    hp_var = tk.StringVar(value=f"HP {cur_hp}/{max_hp}")
+    ac_var = tk.StringVar(value=f"AC {ac_val}")
+    ttk.Label(stats, textvariable=atk_var, foreground="#E6B800", style="Tiny.TLabel").grid(row=0, column=0, sticky='w', padx=0, pady=(0, 0))
+    ttk.Label(stats, textvariable=hp_var, foreground="#27ae60" if cur_hp > 0 else "#c0392b", style="Tiny.TLabel").grid(row=1, column=0, sticky='w', padx=0, pady=(0, 0))
+    ttk.Label(stats, textvariable=ac_var, foreground="#2980b9", style="Tiny.TLabel").grid(row=2, column=0, sticky='w', padx=0, pady=(0, 0))
 
     # 角色卡右侧装备槽：敌方显示为禁用态（可见信息不可操作），我方可操作
     eq = getattr(m, 'equipment', None)
@@ -126,9 +129,9 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
         U.attach_tooltip_deep(btn, lambda it=item, lb=label: tip_text_for(it, lb))
         return btn
 
-    make_btn(0, '左手', left_item, 'left')
-    make_btn(1, '盔甲', armor_item, 'armor')
-    make_btn(2, '右手', right_item, 'right')
+    btn_l = make_btn(0, '左手', left_item, 'left')
+    btn_a = make_btn(1, '盔甲', armor_item, 'armor')
+    btn_r = make_btn(2, '右手', right_item, 'right')
 
     def card_tip():
         # Provide tooltip matching the semantics of the "s 5" command output when possible.
@@ -195,5 +198,17 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
         # This function intentionally mirrors a typical "s 5" style multiline summary.
         return "\n".join(parts)
 
+    # 挂载可更新引用，供事件驱动的微更新使用
+    try:
+        frame._atk_var = atk_var
+        frame._hp_var = hp_var
+        frame._ac_var = ac_var
+        frame._btn_left = btn_l
+        frame._btn_armor = btn_a
+        frame._btn_right = btn_r
+        frame._model_ref = m
+        frame._is_enemy = bool(is_enemy)
+    except Exception:
+        pass
     U.attach_tooltip_deep(frame, card_tip)
     return frame

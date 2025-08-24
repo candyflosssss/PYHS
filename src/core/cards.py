@@ -1,6 +1,7 @@
 import random
 from src.ui import colors as C
 from .combatant import Combatant
+from src.core.events import publish as publish_event
 
 class Card(Combatant):
     weight = 1  # 抽牌权重
@@ -15,7 +16,21 @@ class Card(Combatant):
         """处理卡牌受到伤害（考虑防御力）"""
         defense = self.get_total_defense()
         actual_damage = max(1, damage - defense)
+        prev = self.hp
         self.hp -= actual_damage
+        try:
+            publish_event('card_damaged', {'card': self, 'amount': actual_damage, 'hp_before': prev, 'hp_after': self.hp})
+        except Exception:
+            pass
+        if self.hp <= 0:
+            try:
+                publish_event('card_will_die', {'card': self})
+            except Exception:
+                pass
+            try:
+                publish_event('card_died', {'card': self})
+            except Exception:
+                pass
 
     def on_play(self, game, owner, target=None):
         pass
@@ -24,7 +39,12 @@ class Card(Combatant):
         pass
 
     def heal(self, amount):
+        prev = self.hp
         self.hp = min(self.hp + amount, self.max_hp)
+        try:
+            publish_event('card_healed', {'card': self, 'amount': int(amount), 'hp_before': prev, 'hp_after': self.hp})
+        except Exception:
+            pass
 
     def sync_state(self):
         windfury = getattr(self, 'windfury', False)

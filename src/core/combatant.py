@@ -17,6 +17,11 @@ class Combatant:
         self.max_hp = int(hp)
         self.can_attack = False
         self.equipment = EquipmentSystem()
+        try:
+            # 让装备系统能在事件中回溯归属对象
+            setattr(self.equipment, 'owner', self)
+        except Exception:
+            pass
         # 可选拓展字段（默认空）
         self.tags = []          # e.g. ["healer","mage","tank"]
         self.passive = {}       # e.g. {"no_counter":true}

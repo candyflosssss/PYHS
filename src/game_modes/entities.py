@@ -7,6 +7,7 @@ from __future__ import annotations
 from typing import Callable, Optional
 from src.ui import colors as C
 from src.core.combatant import Combatant
+from src.core.events import publish as publish_event
 
 
 class ResourceItem:
@@ -42,10 +43,19 @@ class Enemy(Combatant):
     def take_damage(self, damage: int) -> bool:
         # 敌人默认无防御（若未来引入护甲，可用 defense 抵消）
         d = max(0, int(damage))
+        prev = self.hp
         self.hp -= d
+        try:
+            publish_event('enemy_damaged', {'enemy': self, 'amount': d, 'hp_before': prev, 'hp_after': self.hp})
+        except Exception:
+            pass
         return self.hp <= 0
 
     def on_death(self, game: "GameLike") -> None:
+        try:
+            publish_event('enemy_will_die', {'enemy': self})
+        except Exception:
+            pass
         if self.death_effect:
             self.death_effect(game)
 
