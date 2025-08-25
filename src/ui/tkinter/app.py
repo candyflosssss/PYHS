@@ -19,6 +19,7 @@ from . import animations as ANIM
 from . import cards as tk_cards
 from . import resources as tk_resources
 from . import operations as tk_operations
+from .views import EnemiesView, AlliesView, ResourcesView, OperationsView
 from src.ui.targeting.specs import DEFAULT_SPECS, SkillTargetSpec
 from src.ui.targeting.fsm import TargetingEngine
 # Inline 选择：不使用弹窗选择器
@@ -50,6 +51,10 @@ class GameTkApp:
 		self._border_default = 3
 		self._border_selected_enemy = 3
 		self._border_selected_member = 3
+		# 固定卡面尺寸与禁用抖动（避免视觉“抖动”）
+		self.CARD_W = 180
+		self.CARD_H = 80
+		self._no_shake = True
 		# 高亮风格（可调色）：候选与选中分别有描边与浅底色
 		self._wrap_bg_default = self.root.cget('bg')
 		self.HL = {
@@ -71,26 +76,30 @@ class GameTkApp:
 		self._build_menu(self.frame_menu)
 		self._build_game(self.frame_game)
 
-		# 订阅核心事件，进行轻量刷新
+		# UI 更新抑制/合并标记（场景切换时启用，合并多次刷新请求）
+		self._suspend_ui_updates = False
+		self._pending_battlefield_refresh = False
+		self._pending_resource_refresh = False
+		self._pending_ops_refresh = False
+
+		# 订阅核心事件（场景变更）+ 挂载视图单例订阅其自有事件
 		self._event_handlers = []
 		try:
 			self._event_handlers.append(('scene_changed', subscribe_event('scene_changed', self._on_event_scene_changed)))
-			self._event_handlers.append(('enemy_damaged', subscribe_event('enemy_damaged', self._on_event_enemy_changed)))
-			self._event_handlers.append(('enemy_died', subscribe_event('enemy_died', self._on_event_enemy_changed)))
-			# 订阅敌人区的可观察列表事件，确保添加/移除/清空时战场能重绘
-			for evt in ('enemy_added','enemy_removed','enemies_cleared','enemies_reset','enemies_changed'):
-				self._event_handlers.append((evt, subscribe_event(evt, self._on_enemy_zone_event)))
-			self._event_handlers.append(('inventory_changed', subscribe_event('inventory_changed', self._on_event_inventory_changed)))
-			self._event_handlers.append(('equipment_changed', subscribe_event('equipment_changed', self._on_event_equipment_changed)))
-			self._event_handlers.append(('card_damaged', subscribe_event('card_damaged', self._on_event_card_changed)))
-			self._event_handlers.append(('card_healed', subscribe_event('card_healed', self._on_event_card_changed)))
-			self._event_handlers.append(('card_died', subscribe_event('card_died', self._on_event_card_changed)))
-			self._event_handlers.append(('resource_changed', subscribe_event('resource_changed', self._on_event_resource_changed)))
-			# 订阅资源区可观察列表事件，避免遗漏
-			for evt in ('resource_added','resource_removed','resources_cleared','resources_reset','resources_changed'):
-				self._event_handlers.append((evt, subscribe_event(evt, self._on_resource_zone_event)))
 		except Exception:
 			pass
+		# 视图单例：分别订阅其关注的事件
+		self.views = {
+			'enemies': EnemiesView(self),
+			'allies': AlliesView(self),
+			'resources': ResourcesView(self),
+			'ops': OperationsView(self),
+		}
+		for v in self.views.values():
+			try:
+				v.mount()
+			except Exception:
+				pass
 
 		# 若传入了 initial_scene，则自动进入游戏（避免用户还需手动点击“开始游戏”）
 		try:
@@ -102,6 +111,20 @@ class GameTkApp:
 			pass
 
 	# ---- helpers ----
+
+	def _bind_views_context(self):
+		"""让各 View 直接持有 game 引用，避免通过 app 转发。"""
+		try:
+			g = self.controller.game if (self.controller and hasattr(self.controller, 'game')) else None
+		except Exception:
+			g = None
+		for key in ('enemies', 'allies', 'resources', 'ops'):
+			v = (self.views or {}).get(key)
+			if v and hasattr(v, 'set_context'):
+				try:
+					v.set_context(g)
+				except Exception:
+					pass
 
 	def _log_exception(self, exc: Exception, context: str = ""):
 		"""记录异常到日志控件或打印，避免 silent pass。"""
@@ -173,8 +196,10 @@ class GameTkApp:
 
 	# -------- Event handlers --------
 	def _on_event_scene_changed(self, _evt: str, payload: dict):
-		# 场景切换：立即刷新战斗面板与操作栏，避免残留；用 after 调度减少阻塞
+		# 场景切换：立即更新标题与状态；稍作延时让死亡/伤害浮字有机会展示，然后再全量刷新。
 		try:
+			# 进入抑制窗口：期间的 UI 刷新请求被合并，待窗口结束后一次性处理
+			self._suspend_ui_updates = True
 			label = payload.get('scene_title') or payload.get('scene_path')
 			if label:
 				self.scene_var.set(f"场景: {label}")
@@ -188,84 +213,68 @@ class GameTkApp:
 			self.selected_skill = None
 			self.skill_target_token = None
 			if getattr(self, 'target_engine', None):
-				self.target_engine.cancel()
+				# 统一重置目标引擎，避免跨场景阻塞点击
+				try:
+					self.target_engine.cancel()
+				except Exception:
+					pass
+				try:
+					self.target_engine.reset()
+				except Exception:
+					pass
 		except Exception:
 			pass
-		# 先快速重绘主要区域
-		try:
-			# 场景切换时重置待刷新标记，避免遗留调度
-			setattr(self, '_pending_battlefield_refresh', False)
-			self.refresh_all(skip_info_log=True)
-		except Exception:
-			# 容错：退化为局部刷新
+		# 延迟再刷新，让死亡浮字短暂呈现
+		def _do_full():
 			try:
-				self.refresh_battlefield_only()
+				# 结束抑制窗口，执行一次全量刷新
+				self._suspend_ui_updates = False
+				setattr(self, '_pending_battlefield_refresh', False)
+				# 重新绑定视图上下文，确保直接持有最新的 game/scene 引用
+				try:
+					self._bind_views_context()
+				except Exception:
+					pass
+				self.refresh_all(skip_info_log=True)
+			except Exception:
+				# 容错：退化为局部刷新
+				try:
+					self.refresh_battlefield_only()
+				except Exception:
+					pass
+			# 处理抑制期间积累的资源/操作栏刷新请求
+			try:
+				if getattr(self, '_pending_resource_refresh', False):
+					self._pending_resource_refresh = False
+					self._render_resources()
 			except Exception:
 				pass
-		# 下一帧再更新一次操作栏/日志，避免 I/O 卡顿
+			try:
+				if getattr(self, '_pending_ops_refresh', False):
+					self._pending_ops_refresh = False
+					self._render_operations()
+			except Exception:
+				pass
+			# 下一帧再更新一次操作栏/日志，避免 I/O 卡顿
+			try:
+				self.root.after(0, lambda: (
+					self._render_operations(),
+					self._after_cmd(self.controller._render_full_view() if self.controller else [])
+				))
+			except Exception:
+				pass
 		try:
-			self.root.after(0, lambda: (
-				self._render_operations(),
-				self._after_cmd(self.controller._render_full_view() if self.controller else [])
-			))
+			self.root.after(250, _do_full)
 		except Exception:
-			pass
+			_do_full()
 
-	def _on_event_enemy_changed(self, _evt: str, _payload: dict):
-		# 敌人生命变化或死亡：仅做微更新，不整块刷新
-		try:
-			# 若本次敌人事件是伴随场景切换的死亡，跳过微更新，交由 scene_changed 全量处理
-			if bool((_payload or {}).get('scene_changed')):
-				return
-			enemy = (_payload or {}).get('enemy')
-			if not enemy:
-				return
-			# 定位该敌人的卡片 Frame
-			found = False
-			for idx, wrap in (getattr(self, 'enemy_card_wraps', {}) or {}).items():
-				# 通过模型引用匹配（在卡片的内部 frame 挂了 _model_ref）
-				inner = next((ch for ch in wrap.winfo_children() if hasattr(ch, '_model_ref')), None)
-				if inner is None or getattr(inner, '_model_ref', None) is not enemy:
-					continue
-				# 敌人死亡 -> 移除这张卡
-				if _evt == 'enemy_died' or getattr(enemy, 'hp', 1) <= 0:
-					# 动画淡出后再移除索引
-					def _remove_idx():
-						try:
-							self.enemy_card_wraps.pop(idx, None)
-						except Exception:
-							pass
-						# 批量死亡/移除时，合并到一次战场轻量重绘，修正索引与高亮
-						self._schedule_battlefield_refresh()
-					ANIM.on_death(self, wrap, on_removed=_remove_idx)
-				else:
-					# 仅数值变化：更新 HP/ATK/AC 文本
-					atk = int(getattr(enemy, 'attack', 0))
-					hp = int(getattr(enemy, 'hp', 0)); mhp = int(getattr(enemy, 'max_hp', hp))
-					defv = int(getattr(enemy, 'get_total_defense')() if hasattr(enemy, 'get_total_defense') else getattr(enemy, 'defense', 0))
-					ac = 10 + defv  # 简化：敌人 AC = 10 + 防御
-					inner._atk_var.set(f"ATK {atk}")
-					inner._hp_var.set(f"HP {hp}/{mhp}")
-					inner._ac_var.set(f"AC {ac}")
-					# 受击反馈动画
-					try:
-						ANIM.on_hit(self, wrap, kind='damage')
-						amt = max(0, int((_payload or {}).get('amount', 0)))
-						if amt:
-							ANIM.float_text(self, wrap, f"-{amt}", color="#c0392b")
-					except Exception:
-						pass
-				found = True
-				break
-			# 若找不到对应 UI（可能因为索引已变化或尚未渲染），做一次轻量重绘兜底
-			if not found:
-				self._schedule_battlefield_refresh()
-		except Exception:
-			pass
 
 	def _on_event_inventory_changed(self, _evt: str, _payload: dict):
 		# 背包/资源变化：只刷新资源/背包区域
 		try:
+			if getattr(self, '_suspend_ui_updates', False):
+				self._pending_resource_refresh = True
+				return
 			self._render_resources()
 		except Exception:
 			pass
@@ -280,6 +289,10 @@ class GameTkApp:
 	def _on_resource_zone_event(self, _evt: str, _payload: dict):
 		"""资源区的 ObservableList 事件：仅重绘资源按钮容器。"""
 		try:
+			if getattr(self, '_suspend_ui_updates', False):
+				self._pending_resource_refresh = True
+				self._pending_ops_refresh = True
+				return
 			self._render_resources()
 			# 操作栏可能受资源使用影响（例如药水可用性），一并刷新
 			self._render_operations()
@@ -289,8 +302,14 @@ class GameTkApp:
 	def _on_event_equipment_changed(self, _evt: str, _payload: dict):
 		# 装备变化：仅刷新操作栏与受影响卡片的数值，避免整块重绘
 		try:
+			if getattr(self, '_suspend_ui_updates', False):
+				self._pending_ops_refresh = True
+				# 卡片的细节变更会在切换完成时统一刷新
+				return
 			card = (_payload or {}).get('owner') or (_payload or {}).get('card')
 			self._render_operations()
+			# 背包列表也会改变（装备/卸下），需要刷新
+			self._refresh_inventory_only()
 			if not card:
 				return
 			# 更新对应卡片
@@ -367,53 +386,6 @@ class GameTkApp:
 		except Exception:
 			pass
 
-	def _on_event_card_changed(self, _evt: str, _payload: dict):
-		# 我方随从受伤/治疗/阵亡：仅微更新目标卡片
-		try:
-			card = (_payload or {}).get('card')
-			if not card:
-				return
-			found = False
-			for idx, wrap in (getattr(self, 'card_wraps', {}) or {}).items():
-				inner = next((ch for ch in wrap.winfo_children() if hasattr(ch, '_model_ref')), None)
-				if inner is None or getattr(inner, '_model_ref', None) is not card:
-					continue
-				if _evt == 'card_died' or getattr(card, 'hp', 1) <= 0:
-					def _remove_idx():
-						try:
-							self.card_wraps.pop(idx, None)
-						except Exception:
-							pass
-						# 同步一次战场轻量重绘，保证我方卡片索引/高亮一致
-						self._schedule_battlefield_refresh()
-					ANIM.on_death(self, wrap, on_removed=_remove_idx)
-				else:
-					# 更新 ATK/HP/AC
-					atk = int(getattr(card, 'get_total_attack')() if hasattr(card, 'get_total_attack') else getattr(card, 'attack', 0))
-					hp = int(getattr(card, 'hp', 0)); mhp = int(getattr(card, 'max_hp', hp))
-					defv = int(getattr(card, 'get_total_defense')() if hasattr(card, 'get_total_defense') else getattr(card, 'defense', 0))
-					ac = 10 + defv
-					inner._atk_var.set(f"ATK {atk}")
-					inner._hp_var.set(f"HP {hp}/{mhp}")
-					inner._ac_var.set(f"AC {ac}")
-					# 根据事件类型选择动画类型
-					try:
-						kind = 'heal' if _evt == 'card_healed' else 'damage'
-						ANIM.on_hit(self, wrap, kind=kind)
-						amt = max(0, int((_payload or {}).get('amount', 0)))
-						if amt:
-							text = f"+{amt}" if kind == 'heal' else f"-{amt}"
-							col = "#27ae60" if kind == 'heal' else "#c0392b"
-							ANIM.float_text(self, wrap, text, color=col)
-					except Exception:
-						pass
-					found = True
-					break
-			# 若未能定位到对应 UI，兜底一次战场轻量重绘
-			if not found:
-				self._schedule_battlefield_refresh()
-		except Exception:
-			pass
 
 	def _on_event_resource_changed(self, _evt: str, _payload: dict):
 		# 资源区改变：只刷新资源按钮
@@ -554,6 +526,8 @@ class GameTkApp:
 			self.style.configure("Tiny.TButton", font=("Segoe UI", 8), padding=(4, 2))
 			self.style.configure("Tiny.TLabel", font=("Segoe UI", 8))
 			self.style.configure("TinyBold.TLabel", font=("Segoe UI", 9, "bold"))
+			# 更紧凑的卡片槽按钮样式
+			self.style.configure("Slot.TButton", font=("Segoe UI", 8), padding=(0, 0))
 		except Exception:
 			self.style = None
 		ttk.Label(top, textvariable=self.scene_var, font=("Segoe UI", 10, "bold")).pack(side=tk.LEFT)
@@ -643,13 +617,18 @@ class GameTkApp:
 		sb_log.pack(side=tk.RIGHT, fill=tk.Y)
 		# 日志语义颜色标签
 		try:
+			# 基础
 			self.text_log.tag_configure('info', foreground='#222')
 			self.text_log.tag_configure('success', foreground='#27ae60')
 			self.text_log.tag_configure('warning', foreground='#E67E22')
-			self.text_log.tag_configure('attack', foreground='#c0392b', font=("Segoe UI", 8, 'bold'))
 			self.text_log.tag_configure('error', foreground='#d9534f', underline=True)
-			# 状态快照（统一信息区内容）
 			self.text_log.tag_configure('state', foreground="#666")
+			# 战斗语义
+			self.text_log.tag_configure('attack', foreground='#c0392b', font=("Segoe UI", 8, 'bold'))
+			self.text_log.tag_configure('heal', foreground='#27ae60', font=("Segoe UI", 8, 'bold'))
+			self.text_log.tag_configure('crit', foreground='#8E44AD', font=("Segoe UI", 8, 'bold'))
+			self.text_log.tag_configure('miss', foreground='#95A5A6', font=("Segoe UI", 8, 'italic'))
+			self.text_log.tag_configure('block', foreground='#2C3E50', font=("Segoe UI", 8))
 		except Exception:
 			pass
 		try:
@@ -732,50 +711,16 @@ class GameTkApp:
 			pass
 
 	def _render_enemy_cards(self):
-		# 敌人卡片区仅通过卡片展示（顶部）
-		for w in list(self.enemy_cards_container.winfo_children()):
-			w.destroy()
-		self.enemy_card_wraps.clear()
-		enemies = getattr(self.controller.game, 'enemies', None) or getattr(self.controller.game, 'enemy_zone', []) or []
-		if not enemies:
-			ttk.Label(self.enemy_cards_container, text="(无敌人)", foreground="#888").pack(anchor=tk.CENTER, pady=(2, 4))
-			return
-		max_per_row = 6
-		members = list(enemies)[:12]
-		rows = [members[:max_per_row], members[max_per_row:]]
-		for r_idx, row_members in enumerate(rows):
-			if not row_members:
-				continue
-			row_f = ttk.Frame(self.enemy_cards_container)
-			row_f.grid(row=r_idx, column=0, sticky='ew', pady=(2, 2))
-			for c in (0, max_per_row + 1):
-				row_f.grid_columnconfigure(c, weight=1)
-			k = len(row_members)
-			start = 1 + (max_per_row - k) // 2
-			for j, e in enumerate(row_members):
-				e_index = r_idx * max_per_row + j + 1
-				wrap = tk.Frame(row_f, highlightthickness=self._border_default, highlightbackground="#cccccc")
-				inner = self._create_enemy_card(wrap, e, e_index)
-				inner.pack(fill=tk.BOTH, expand=True)
-				col = start + j
-				wrap.grid(row=0, column=col, padx=2, sticky='n')
-				def bind_all(w):
-					# 保留卡片点击处理，但不依赖左上 listbox
-					w.bind('<Button-1>', lambda _e, idx=e_index: self._on_enemy_card_click(idx))
-					for ch in getattr(w, 'winfo_children', lambda: [])():
-						bind_all(ch)
-				bind_all(wrap)
-				self.enemy_card_wraps[e_index] = wrap
+		# 交由视图实现
+		v = self.views.get('enemies')
+		return v.render_all(self.enemy_cards_container) if v else None
 
 	def _create_enemy_card(self, parent: tk.Widget, e, e_index: int) -> ttk.Frame:
-		# Reuse the unified character card renderer so enemies and characters share the same UI.
-		try:
-			return tk_cards.create_character_card(self, parent, e, e_index, is_enemy=True)
-		except Exception:
-			# Fallback: minimal frame if shared renderer fails
-			frame = ttk.Frame(parent, relief='ridge', padding=4)
-			ttk.Label(frame, text=getattr(e, 'name', f'敌人#{e_index}')).pack()
-			return frame
+		# 兼容旧 API：直接转给视图实现
+		v = self.views.get('enemies')
+		if v and hasattr(v, '_create_enemy_card'):
+			return v._create_enemy_card(parent, e, e_index)
+		return tk_cards.create_character_card(self, parent, e, e_index, is_enemy=True)
 
 	def _select_skill(self, m_index: int, skill_type: str):
 		# 选择技能后高亮可用目标（不立即执行）
@@ -827,6 +772,22 @@ class GameTkApp:
 			except Exception:
 				resp = out
 			self._after_cmd(resp)
+			# 立即清理目标会话与技能选择，避免阻塞后续点击
+			try:
+				self.selected_skill = None
+				self.selected_skill_name = None
+				self.skill_target_index = None
+				self.skill_target_token = None
+				self._reset_highlights()
+				if getattr(self, 'target_engine', None):
+					self.target_engine.reset()
+			except Exception:
+				pass
+			# AOE 常伴随多名敌人死亡/移除，主动刷新战场一次，保证 UI 与事件对齐
+			try:
+				self.refresh_battlefield_only()
+			except Exception:
+				pass
 			return
 		# 在主界面进行目标选择：高亮候选，并在操作栏渲染内联候选按钮
 		self._update_target_highlights()
@@ -992,50 +953,31 @@ class GameTkApp:
 			pass
 
 	def _render_cards(self):
-		for w in list(self.cards_container.winfo_children()):
-			w.destroy()
-		self.card_wraps.clear()
-		game = getattr(self.controller, 'game', None)
-		if not game:
-			return
-		board = getattr(game.player, 'board', [])
-		if not board:
-			ttk.Label(self.cards_container, text="(队伍为空)", foreground="#888").pack(anchor=tk.CENTER, pady=(2, 6))
-			return
-		members = list(board)[:10]
-		max_per_row = 5
-		rows = [members[:max_per_row], members[max_per_row:]]
-		for r_idx, row_members in enumerate(rows):
-			if not row_members:
-				continue
-			row_f = ttk.Frame(self.cards_container)
-			row_f.grid(row=r_idx, column=0, sticky='ew', pady=(2, 2))
-			for c in (0, max_per_row + 1):
-				row_f.grid_columnconfigure(c, weight=1)
-			k = len(row_members)
-			start = 1 + (max_per_row - k) // 2
-			for j, m in enumerate(row_members):
-				m_index = r_idx * max_per_row + j + 1
-				wrap = tk.Frame(row_f, highlightthickness=self._border_default, highlightbackground="#cccccc")
-				inner = self._create_character_card(wrap, m, m_index)
-				inner.pack(fill=tk.BOTH, expand=True)
-				col = start + j
-				wrap.grid(row=0, column=col, padx=2, sticky='n')
-				def bind_all(w):
-					w.bind('<Button-1>', lambda _e, idx=m_index: self._on_card_click(idx))
-					for ch in getattr(w, 'winfo_children', lambda: [])():
-						bind_all(ch)
-				bind_all(wrap)
-				self.card_wraps[m_index] = wrap
+		# 交由视图实现
+		v = self.views.get('allies')
+		return v.render_all(self.cards_container) if v else None
 
 	def _create_character_card(self, parent: tk.Widget, m, m_index: int) -> ttk.Frame:
+		# 兼容旧 API：直接转给视图实现
+		v = self.views.get('allies')
+		if v and hasattr(v, '_create_character_card'):
+			return v._create_character_card(parent, m, m_index)
 		return tk_cards.create_character_card(self, parent, m, m_index)
 
 	def _render_resources(self):
+		# 抑制窗口期间合并刷新，待窗口结束统一渲染
+		if getattr(self, '_suspend_ui_updates', False):
+			self._pending_resource_refresh = True
+			return None
 		return tk_resources.render_resources(self, self.res_buttons_container)
 
 	def _render_operations(self):
-		return tk_operations.render_operations(self, self.frm_operations)
+		# 抑制窗口期间合并刷新，待窗口结束统一渲染
+		if getattr(self, '_suspend_ui_updates', False):
+			self._pending_ops_refresh = True
+			return None
+		v = self.views.get('ops')
+		return v.render(self.frm_operations) if v else tk_operations.render_operations(self, self.frm_operations)
 
 	def _op_attack(self, m_index: int):
 		# 发起攻击，期望 controller 能处理选择目标或提示
@@ -1095,6 +1037,16 @@ class GameTkApp:
 		top.title("选择装备")
 		top.transient(self.root)
 		top.grab_set()
+		# 将对话框定位到鼠标附近，并确保不越界
+		try:
+			self.root.update_idletasks()
+			sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+			px, py = self.root.winfo_pointerx(), self.root.winfo_pointery()
+			# 先设置到偏移位置，再在内容布局后精确回调一次
+			x, y = max(0, px + 12), max(0, py + 12)
+			top.geometry(f"+{x}+{y}")
+		except Exception:
+			pass
 		frm = ttk.Frame(top, padding=10)
 		frm.pack(fill=tk.BOTH, expand=True)
 
@@ -1234,6 +1186,18 @@ class GameTkApp:
 		btns.pack(fill=tk.X)
 		ttk.Button(btns, text="确认装备", command=do_confirm).pack(side=tk.LEFT)
 		ttk.Button(btns, text="取消", command=do_cancel).pack(side=tk.RIGHT)
+
+		# 第二次定位：计算窗口尺寸后做边界裁剪，防止出屏幕
+		try:
+			top.update_idletasks()
+			w, h = top.winfo_width(), top.winfo_height()
+			sw, sh = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+			px, py = self.root.winfo_pointerx(), self.root.winfo_pointery()
+			x = min(max(0, px + 12), max(0, sw - w))
+			y = min(max(0, py + 12), max(0, sh - h))
+			top.geometry(f"+{x}+{y}")
+		except Exception:
+			pass
 
 	def _attach_tooltip(self, widget: tk.Widget, text_provider):
 		"""保留原版：仅绑定到单个控件。"""
@@ -1385,7 +1349,7 @@ class GameTkApp:
 		"""
 		try:
 			if isinstance(text, dict):
-				typ = text.get('type', 'info')
+				typ = (text.get('type', 'info') or 'info').lower()
 				txt = text.get('text', '')
 				meta = text.get('meta', {}) or {}
 			else:
@@ -1398,16 +1362,11 @@ class GameTkApp:
 			end = self.text_log.index(tk.END)
 			# apply semantic coloring tags
 			try:
-				if typ == 'attack' or typ == 'damage':
-					self.text_log.tag_add('attack', start, end)
-				elif typ == 'success':
-					self.text_log.tag_add('success', start, end)
-				elif typ == 'warning':
-					self.text_log.tag_add('warning', start, end)
-				elif typ == 'error':
-					self.text_log.tag_add('error', start, end)
-				else:
-					self.text_log.tag_add('info', start, end)
+				palette = {
+					'info': 'info', 'success': 'success', 'warning': 'warning', 'error': 'error', 'state': 'state',
+					'attack': 'attack', 'damage': 'attack', 'heal': 'heal', 'crit': 'crit', 'miss': 'miss', 'block': 'block',
+				}
+				self.text_log.tag_add(palette.get(typ, 'info'), start, end)
 			except Exception:
 				pass
 			# store meta as JSON-like string on the tag for tooltip retrieval
@@ -1752,9 +1711,29 @@ class GameTkApp:
 			self._reset_highlights()
 		except Exception as e:
 			self._log_exception(e, '_after_cmd_reset')
-		# 命令后不再强制重绘战场，交给事件驱动；仅更新操作栏以反映技能可用性
+		# 清理可能残留的目标选择/技能状态，避免下一次点击被阻塞
 		try:
+			self.selected_skill = None
+			self.selected_skill_name = None
+			self.skill_target_index = None
+			self.skill_target_token = None
+			if getattr(self, 'target_engine', None):
+				self.target_engine.reset()
+		except Exception:
+			pass
+		# 命令后不再强制重绘战场，交给事件驱动；
+		# 但为避免遗漏（例如某些路径未发事件），兜底刷新资源/背包/操作栏
+		try:
+			# 资源与背包区域
+			self._render_resources()
+			self._refresh_inventory_only()
+			# 操作栏以反映技能/物品可用性
 			self._render_operations()
+		except Exception:
+			pass
+		# 某些无目标技能（如横扫）可能未及时触发 zone 事件，安排一次轻量战场刷新
+		try:
+			self._schedule_battlefield_refresh()
 		except Exception:
 			pass
 
@@ -1825,6 +1804,9 @@ class GameTkApp:
 			if getattr(self, '_pending_battlefield_refresh', False):
 				return
 			setattr(self, '_pending_battlefield_refresh', True)
+			# 场景切换抑制期：不立即调度，待抑制结束时由 refresh_all 统一处理
+			if getattr(self, '_suspend_ui_updates', False):
+				return
 			self.root.after(0, self.refresh_battlefield_only)
 		except Exception:
 			# 若调度失败，直接执行一次兜底刷新
@@ -1839,6 +1821,11 @@ class GameTkApp:
 		self.frame_menu.pack_forget()
 		self.frame_game.pack(fill=tk.BOTH, expand=True)
 		self.mode = 'game'
+		# 让视图持有 game 引用（直接绑定场景/实体），减少 app 层转发
+		try:
+			self._bind_views_context()
+		except Exception:
+			pass
 		# 输出初始状态快照到战斗日志（替代历史的 text_info 面板）
 		try:
 			full = self.controller._render_full_view()
@@ -1893,6 +1880,12 @@ class GameTkApp:
 	def _on_close(self):
 		# 取消订阅并关闭
 		try:
+			# unmount views first
+			for v in (getattr(self, 'views', {}) or {}).values():
+				try:
+					v.unmount()
+				except Exception:
+					pass
 			for evt, cb in getattr(self, '_event_handlers', []) or []:
 				try:
 					unsubscribe_event(evt, cb)

@@ -74,6 +74,18 @@ def _cancel_anim(w: tk.Widget):
         pass
 
 
+def cancel_widget_anims(w: tk.Widget):
+    """Cancel any scheduled animations on widget and its descendants.
+    This helps prevent stale after() callbacks firing during/after destroy.
+    """
+    try:
+        _cancel_anim(w)
+    except Exception:
+        pass
+    for ch in getattr(w, 'winfo_children', lambda: [])():
+        cancel_widget_anims(ch)
+
+
 def _schedule(w: tk.Widget, delay: int, cb: Callable[[], None]):
     try:
         i = w.after(delay, cb)
@@ -178,50 +190,97 @@ def on_hit(app, wrap: tk.Frame, kind: str = 'damage'):
     except Exception:
         color = '#c0392b'
     try:
-        # 稍微增强可见度：多一次闪烁，shake 稍快
+        # 稍微增强可见度：多一次闪烁
         flash_border(wrap, color, repeats=3, interval=80)
-        shake(wrap, amplitude=3, cycles=8, interval=12)
+        # 如果未禁用，可轻微抖动；默认由 app._no_shake 控制
+        if not getattr(app, '_no_shake', False):
+            shake(wrap, amplitude=3, cycles=8, interval=12)
     except Exception:
         pass
 
 
 def on_death(app, wrap: tk.Frame, *, on_removed: Optional[Callable[[], None]] = None):
-    """Death feedback: brief red flash then fade out and remove."""
+    """Death feedback: clearer sequence and slower fade: flash -> small delay -> fade -> remove."""
+    # 更明显的边框闪烁
     try:
-        flash_border(wrap, app.HL.get('sel_enemy_border', '#FF4D4F'), repeats=2, interval=80)
+        flash_border(wrap, app.HL.get('sel_enemy_border', '#FF4D4F'), repeats=3, interval=90)
     except Exception:
         pass
-    try:
-        fade_out_and_remove(wrap, to_color=getattr(app, '_wrap_bg_default', '#ffffff'), steps=8, interval=30, on_done=on_removed)
-    except Exception:
-        # fallback: remove immediately
+    # 闪烁后稍等再开始淡出，保证“先播动画再消失”的观感（总时长 ~1.2s）
+    def _start_fade():
         try:
-            wrap.destroy()
+            fade_out_and_remove(
+                wrap,
+                to_color=getattr(app, '_wrap_bg_default', '#ffffff'),
+                steps=16,
+                interval=45,
+                on_done=on_removed,
+            )
         except Exception:
-            pass
-        if callable(on_removed):
+            # fallback: remove immediately
             try:
-                on_removed()
+                wrap.destroy()
             except Exception:
                 pass
+            if callable(on_removed):
+                try:
+                    on_removed()
+                except Exception:
+                    pass
+    try:
+        wrap.after(150, _start_fade)
+    except Exception:
+        _start_fade()
 
 
-def float_text(app, wrap: tk.Frame, text: str, *, color: str = '#c0392b', dy: int = 20, steps: int = 12, interval: int = 28):
+def float_text(app, wrap: tk.Frame, text: str, *, color: str = '#c0392b', dy: int = 30, steps: int = 12, interval: int = 28):
     """在卡片上方显示一段浮动文本（如 -10/+5），向上飘散后消失。
-    使用 place 叠加到 wrap 顶层，不影响布局。
+    - 字号放大到原来的 3 倍，提升可视性；
+    - 背景模拟透明：去边框，背景与卡片一致；
+    - 加一层 1px 阴影增强对比。
     """
     try:
-        # 取背景色用于融合
+        # 选择更贴近内容的父容器：优先使用 wrap 内部的“inner”卡片（挂了 _model_ref）
+        parent = wrap
         try:
-            bg = wrap.cget('background') or getattr(app, '_wrap_bg_default', '#ffffff')
+            inner = next((ch for ch in wrap.winfo_children() if hasattr(ch, '_model_ref')), None)
+            if inner is not None:
+                parent = inner
         except Exception:
-            bg = getattr(app, '_wrap_bg_default', '#ffffff')
-        lbl = tk.Label(wrap, text=str(text), fg=color, bg=bg, font=("Segoe UI", 9, "bold"))
-        # 居中置顶
-        y0 = 2
-        lbl.place(in_=wrap, relx=0.5, y=y0, anchor='n')
+            pass
+        # 取得与 parent 一致的背景颜色（ttk 风格兼容）
         try:
-            lbl.lift()
+            style_name = ''
+            try:
+                style_name = parent.cget('style') or ''
+            except Exception:
+                style_name = ''
+            if style_name:
+                bg = ttk.Style(parent).lookup(style_name, 'background') or getattr(app, '_wrap_bg_default', '#ffffff')
+            else:
+                # 默认 TFrame 背景
+                bg = ttk.Style(parent).lookup('TFrame', 'background') or parent.cget('background') or getattr(app, '_wrap_bg_default', '#ffffff')
+        except Exception:
+            try:
+                bg = parent.cget('background') or getattr(app, '_wrap_bg_default', '#ffffff')
+            except Exception:
+                bg = getattr(app, '_wrap_bg_default', '#ffffff')
+        font_big = ("Segoe UI", 27, "bold")  # 3x 放大
+        y0 = 4
+        # 阴影层（在下）
+        shadow = tk.Label(
+            parent, text=str(text), fg="#000000", bg=bg, font=font_big,
+            bd=0, highlightthickness=0
+        )
+        shadow.place(in_=parent, relx=0.5, y=y0+1, anchor='n')
+        # 前景层（在上）
+        lbl = tk.Label(
+            parent, text=str(text), fg=color, bg=bg, font=font_big,
+            bd=0, highlightthickness=0
+        )
+        lbl.place(in_=parent, relx=0.5, y=y0, anchor='n')
+        try:
+            shadow.lift(); lbl.lift()
         except Exception:
             pass
         state = {'i': 0}
@@ -229,27 +288,28 @@ def float_text(app, wrap: tk.Frame, text: str, *, color: str = '#c0392b', dy: in
         def step():
             i = state['i']
             t = i / float(max(1, steps))
-            # 向上移动，逐渐淡色（通过近似：插值到背景色）
+            # 向上移动
             try:
                 ny = int(y0 - dy * t)
                 lbl.place_configure(y=ny)
+                shadow.place_configure(y=ny+1)
             except Exception:
                 pass
+            # 近似淡出：前景与阴影分别插值至背景色
             try:
-                # 近似淡出：通过颜色插值接近背景（fg 无 alpha，只能近似）
-                from_color = color
-                to_color = bg
-                lbl.configure(fg=_interp_color(from_color, to_color, t))
+                lbl.configure(fg=_interp_color(color, bg, t))
+                shadow.configure(fg=_interp_color('#000000', bg, t))
             except Exception:
                 pass
             state['i'] += 1
             if state['i'] <= steps:
                 _schedule(wrap, interval, step)
             else:
-                try:
-                    lbl.destroy()
-                except Exception:
-                    pass
+                for w in (lbl, shadow):
+                    try:
+                        w.destroy()
+                    except Exception:
+                        pass
 
         step()
     except Exception:

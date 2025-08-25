@@ -88,10 +88,10 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
     # 若左手为双手武器，右手视为被占用
     right_item = left_item if getattr(left_item, 'is_two_handed', False) else right_item_raw
 
-    right = ttk.Frame(frame)
-    right.grid(row=0, column=1, rowspan=2, sticky='nsew')
-    right.columnconfigure(0, weight=1)
-    right.columnconfigure(1, weight=0)
+    # 右侧更紧凑：去除多余列与内边距，使用单列承载按钮
+    right = ttk.Frame(frame, padding=(0, 0))
+    right.grid(row=0, column=1, rowspan=2, sticky='n')
+    right.columnconfigure(0, weight=0)
 
     def slot_text(label, item):
         if item:
@@ -122,10 +122,11 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
         text = slot_text(label, item)
         if is_enemy:
             # 敌方：禁用按钮，仅展示信息，不触发任何回调
-            btn = ttk.Button(right, text=text, state=tk.DISABLED, style="Tiny.TButton")
+            btn = ttk.Button(right, text=text, state=tk.DISABLED, style="Slot.TButton")
         else:
-            btn = ttk.Button(right, text=text, command=lambda: app._slot_click(m_index, slot_key, item), style="Tiny.TButton")
-        btn.grid(row=r, column=1, sticky='e', pady=1, padx=(4, 2))
+            btn = ttk.Button(right, text=text, command=lambda: app._slot_click(m_index, slot_key, item), style="Slot.TButton")
+        # 更紧凑的外边距与单列布局
+        btn.grid(row=r, column=0, sticky='e', pady=(0, 0), padx=(0, 0))
         U.attach_tooltip_deep(btn, lambda it=item, lb=label: tip_text_for(it, lb))
         return btn
 
