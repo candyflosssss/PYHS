@@ -23,10 +23,16 @@ class EnemiesView:
         self.app = app
         self._subs: list[tuple[str, Callable]] = []
         self.game = None
+        self._container = None
+        self._pending_render = False
 
     def set_context(self, game):
         """Bind current game (scene, zones, entities)."""
         self.game = game
+
+    def attach(self, container):
+        """Attach the container to render enemy cards into."""
+        self._container = container
 
     def mount(self):
         if self._subs:
@@ -52,7 +58,7 @@ class EnemiesView:
         try:
             # defer during scene-change suppression window
             if getattr(self.app, '_suspend_ui_updates', False):
-                self.app._pending_battlefield_refresh = True
+                self._pending_render = True
                 return
             enemy = (payload or {}).get('enemy')
             if not enemy:
@@ -79,7 +85,8 @@ class EnemiesView:
                             self.app.enemy_card_wraps.pop(idx, None)
                         except Exception:
                             pass
-                        self.app._schedule_battlefield_refresh()
+                        # 仅调度一次轻量刷新；避免在动画期间多次刷新
+                        self._schedule_render()
                     ANIM.on_death(self.app, wrap, on_removed=_remove_idx)
                 else:
                     atk = int(getattr(enemy, 'attack', 0))
@@ -99,16 +106,28 @@ class EnemiesView:
                 found = True
                 break
             if not found:
-                self.app._schedule_battlefield_refresh()
+                self._schedule_render()
         except Exception:
-            try:
-                self.app._schedule_battlefield_refresh()
-            except Exception:
-                pass
+            self._schedule_render()
 
     def _on_zone(self, _evt: str, _payload: dict):
+        self._schedule_render()
+
+    def _schedule_render(self):
+        if not self._container:
+            return
+        if self._pending_render:
+            return
+        self._pending_render = True
         try:
-            self.app._schedule_battlefield_refresh()
+            self.app.root.after(0, self._render_now)
+        except Exception:
+            self._render_now()
+
+    def _render_now(self):
+        self._pending_render = False
+        try:
+            self.render_all(self._container)
         except Exception:
             pass
 
@@ -168,7 +187,7 @@ class EnemiesView:
                 col = start + j
                 wrap.grid(row=0, column=col, padx=2, sticky='n')
                 def bind_all(w):
-                    w.bind('<Button-1>', lambda _e, idx=e_index: self.app._on_enemy_card_click(idx))
+                    w.bind('<Button-1>', lambda _e, idx=e_index: self.app.selection.on_enemy_click(idx))
                     for ch in getattr(w, 'winfo_children', lambda: [])():
                         bind_all(ch)
                 bind_all(wrap)

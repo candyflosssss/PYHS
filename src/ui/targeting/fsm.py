@@ -36,6 +36,15 @@ class TargetingEngine:
         # compute candidates
         self.ctx.candidates = self._compute_candidates(self.ctx)
         self.ctx.selected.clear()
+        # 若无候选且需要选择，依据 fallback 策略：默认 cancel，从而让上层清理而不卡住
+        if not self.ctx.candidates:
+            fb = getattr(spec, 'fallback', 'cancel')
+            if fb == 'random' and (spec.min_targets or 0) > 0:
+                # 允许随机（但此时 candidates 为空，仍无法随机）-> 视为 cancel
+                pass
+            # 置为 Executing 交由上层直接执行（将不带目标），或上层看到无候选时直接 clear
+            self.ctx.state = 'Executing'
+            return True
         self.ctx.state = 'Selecting'
         return False
 
@@ -115,3 +124,9 @@ class TargetingEngine:
 
     def get_selected(self) -> List[str]:
         return list(self.ctx.selected) if self.ctx else []
+
+    def has_candidates(self) -> bool:
+        try:
+            return bool(self.ctx and (self.ctx.candidates or []))
+        except Exception:
+            return False

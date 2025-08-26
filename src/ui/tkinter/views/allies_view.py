@@ -12,19 +12,24 @@ except Exception:  # pragma: no cover
 
 
 class AlliesView:
-    """Owns ally card events and triggers micro-updates.
+    """拥有盟友卡牌事件并触发微更新。
 
-    Subscribes to: card_damaged/card_healed/card_died and schedules battlefield refresh on zone-like changes
-    (board mutations are currently reflected via battlefield refresh callers in app).
+    订阅 card_damaged/card_healed/card_died 事件，并根据区域等变化安排战场刷新
+    （目前，棋盘突变通过应用中的战场刷新调用器反映）.
     """
 
     def __init__(self, app):
         self.app = app
         self._subs: list[tuple[str, Callable]] = []
         self.game = None
+        self._container = None
+        self._pending_render = False
 
     def set_context(self, game):
         self.game = game
+
+    def attach(self, container):
+        self._container = container
 
     def mount(self):
         if self._subs:
@@ -46,7 +51,7 @@ class AlliesView:
         from .. import animations as ANIM
         try:
             if getattr(self.app, '_suspend_ui_updates', False):
-                self.app._pending_battlefield_refresh = True
+                self._pending_render = True
                 return
             card = (payload or {}).get('card')
             if not card:
@@ -73,7 +78,11 @@ class AlliesView:
                             self.app.card_wraps.pop(idx, None)
                         except Exception:
                             pass
-                        self.app._schedule_battlefield_refresh()
+                        try:
+                            self._pending_render = False
+                        except Exception:
+                            pass
+                        self._schedule_render()
                     ANIM.on_death(self.app, wrap, on_removed=_remove_idx)
                 else:
                     # 更新文本
@@ -98,21 +107,60 @@ class AlliesView:
                 found = True
                 break
             if not found:
-                self.app._schedule_battlefield_refresh()
+                self._schedule_render()
         except Exception:
             try:
-                self.app._schedule_battlefield_refresh()
+                self._schedule_render()
             except Exception:
                 pass
 
     def _on_equip_changed(self, evt: str, payload: dict):
+        """装备变化：尽量做微更新，并请求操作栏重渲染。"""
         try:
-            self.app._on_event_equipment_changed(evt, payload)
-        except Exception:
+            # 优先微更新：直接刷新受影响卡片文本（若能找到控件）
+            card = (payload or {}).get('owner') or (payload or {}).get('card')
+            if card:
+                for idx, wrap in (getattr(self.app, 'card_wraps', {}) or {}).items():
+                    inner = next((ch for ch in wrap.winfo_children() if hasattr(ch, '_model_ref')), None)
+                    if inner is None or getattr(inner, '_model_ref', None) is not card:
+                        continue
+                    try:
+                        atk = int(getattr(card, 'get_total_attack')() if hasattr(card, 'get_total_attack') else getattr(card, 'attack', 0))
+                        defv = int(getattr(card, 'get_total_defense')() if hasattr(card, 'get_total_defense') else getattr(card, 'defense', 0))
+                        cur = int(getattr(card, 'hp', 0)); mx = int(getattr(card, 'max_hp', cur))
+                        inner._atk_var.set(f"ATK {atk}")
+                        inner._ac_var.set(f"AC {10 + defv}")
+                        inner._hp_var.set(f"HP {cur}/{mx}")
+                    except Exception:
+                        pass
+                    break
+            # 操作栏重渲染
             try:
-                self.app._render_operations()
+                ops = (getattr(self.app, 'views', {}) or {}).get('ops')
+                if ops and hasattr(self.app, 'frm_operations'):
+                    ops.render(self.app.frm_operations)
             except Exception:
                 pass
+        except Exception:
+            pass
+
+    def _schedule_render(self):
+        if not self._container:
+            return
+        if self._pending_render:
+            return
+        self._pending_render = True
+        try:
+            self.app.root.after(0, self._render_now)
+        except Exception:
+            self._render_now()
+
+    def _render_now(self):
+        self._pending_render = False
+        try:
+            self.render_all(self._container)
+        except Exception:
+            pass
 
     # --- rendering ---
     def render_all(self, container):
@@ -169,7 +217,7 @@ class AlliesView:
                 col = start + j
                 wrap.grid(row=0, column=col, padx=2, sticky='n')
                 def bind_all(w):
-                    w.bind('<Button-1>', lambda _e, idx=m_index: self.app._on_card_click(idx))
+                    w.bind('<Button-1>', lambda _e, idx=m_index: self.app.selection.on_ally_click(idx))
                     for ch in getattr(w, 'winfo_children', lambda: [])():
                         bind_all(ch)
                 bind_all(wrap)

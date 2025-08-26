@@ -50,11 +50,11 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
     frame.columnconfigure(0, weight=1)
 
     # name (top)
-    ttk.Label(frame, text=str(name), font=("Segoe UI", 9, "bold")).grid(row=0, column=0, sticky='n', pady=(2, 2))
+    ttk.Label(frame, text=str(name), font=("Segoe UI", 10, "bold")).grid(row=0, column=0, sticky='n', pady=(0, 0))
 
     # stats: vertical stack (attack, hp, AC) — 更紧凑的行距与小字体
     stats = ttk.Frame(frame)
-    stats.grid(row=1, column=0, sticky='n', pady=(2, 2))
+    stats.grid(row=1, column=0, sticky='n', pady=(0, 0))
     # 先计算 AC 数值，再渲染文本，避免未定义变量
     try:
         if ac is not None:

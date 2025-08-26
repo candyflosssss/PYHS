@@ -24,6 +24,16 @@ def clean_ansi(name: str) -> str:
 def attach_tooltip(widget: tk.Widget, text_provider: Callable[[], str] | str):
     tip = {'win': None}
 
+    def _safe_destroy(w: tk.Toplevel):
+        # 通过 after 延迟销毁，避免在 Tcl 回调执行期间直接删除命令导致异常
+        try:
+            w.after(0, lambda: (w.destroy()))
+        except Exception:
+            try:
+                w.destroy()
+            except Exception:
+                pass
+
     def show(_evt=None):
         try:
             text = text_provider() if callable(text_provider) else str(text_provider)
@@ -43,11 +53,11 @@ def attach_tooltip(widget: tk.Widget, text_provider: Callable[[], str] | str):
     def hide(_evt=None):
         w = tip.get('win')
         if w is not None:
+            tip['win'] = None
             try:
-                w.destroy()
+                _safe_destroy(w)
             except Exception:
                 pass
-            tip['win'] = None
 
     widget.bind('<Enter>', show)
     widget.bind('<Leave>', hide)
@@ -55,6 +65,16 @@ def attach_tooltip(widget: tk.Widget, text_provider: Callable[[], str] | str):
 
 def attach_tooltip_deep(root_widget: tk.Widget, text_provider: Callable[[], str] | str):
     tip = {'win': None}
+
+    def _safe_destroy(w: tk.Toplevel):
+        try:
+            # 使用 root_widget 调度销毁，降低嵌套回调下的删除命令风险
+            root_widget.after(0, lambda: (w.destroy()))
+        except Exception:
+            try:
+                w.destroy()
+            except Exception:
+                pass
 
     def show(_evt=None):
         try:
@@ -105,20 +125,20 @@ def attach_tooltip_deep(root_widget: tk.Widget, text_provider: Callable[[], str]
             inside = (rx <= px <= rx + rw) and (ry <= py <= ry + rh)
             if not inside and tip['win'] is not None:
                 w = tip.get('win')
+                tip['win'] = None
                 if w is not None:
                     try:
-                        w.destroy()
+                        _safe_destroy(w)
                     except Exception:
                         pass
-                    tip['win'] = None
         except Exception:
             w = tip.get('win')
+            tip['win'] = None
             if w is not None:
                 try:
-                    w.destroy()
+                    _safe_destroy(w)
                 except Exception:
                     pass
-                tip['win'] = None
 
     def bind_recursive(w: tk.Widget):
         try:
