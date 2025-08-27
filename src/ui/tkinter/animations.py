@@ -76,10 +76,26 @@ def _cancel_anim(w: tk.Widget):
 
 def cancel_widget_anims(w: tk.Widget):
     """Cancel any scheduled animations on widget and its descendants.
-    This helps prevent stale after() callbacks firing during/after destroy.
+    Also clears residual floating labels to avoid lingering text when animations
+    are canceled due to rapid actions or UI teardown.
     """
     try:
         _cancel_anim(w)
+    except Exception:
+        pass
+    # 清理浮动文字（如果存在）
+    try:
+        floats = getattr(w, '_float_text_widgets', None)
+        if floats:
+            for fw in list(floats):
+                try:
+                    fw.destroy()
+                except Exception:
+                    pass
+            try:
+                w._float_text_widgets = []
+            except Exception:
+                pass
     except Exception:
         pass
     for ch in getattr(w, 'winfo_children', lambda: [])():
@@ -96,7 +112,7 @@ def _schedule(w: tk.Widget, delay: int, cb: Callable[[], None]):
         pass
 
 
-def flash_border(wrap: tk.Frame, color: str, base: Optional[str] = None, repeats: int = 2, interval: int = 90):
+def flash_border(wrap: tk.Frame, color: str, base: Optional[str] = None, repeats: int = 3, interval: int = 120):
     """Flash the wrap's highlight border color briefly."""
     _cancel_anim(wrap)
     try:
@@ -123,7 +139,7 @@ def flash_border(wrap: tk.Frame, color: str, base: Optional[str] = None, repeats
     step()
 
 
-def shake(wrap: tk.Frame, amplitude: int = 3, cycles: int = 6, interval: int = 16):
+def shake(wrap: tk.Frame, amplitude: int = 3, cycles: int = 8, interval: int = 22):
     """Small horizontal shake by tweaking padx. Keep subtle to avoid layout jump."""
     _cancel_anim(wrap)
     base_px = _get_padx(wrap)
@@ -145,7 +161,7 @@ def shake(wrap: tk.Frame, amplitude: int = 3, cycles: int = 6, interval: int = 1
     step()
 
 
-def fade_out_and_remove(wrap: tk.Frame, *, to_color: str = '#ffffff', steps: int = 10, interval: int = 40, on_done: Optional[Callable[[], None]] = None):
+def fade_out_and_remove(wrap: tk.Frame, *, to_color: str = '#ffffff', steps: int = 14, interval: int = 55, on_done: Optional[Callable[[], None]] = None):
     """Fade the wrap bg towards to_color, then destroy and call on_done."""
     _cancel_anim(wrap)
     try:
@@ -191,10 +207,10 @@ def on_hit(app, wrap: tk.Frame, kind: str = 'damage'):
         color = '#c0392b'
     try:
         # 稍微增强可见度：多一次闪烁
-        flash_border(wrap, color, repeats=3, interval=80)
+        flash_border(wrap, color, repeats=3, interval=110)
         # 如果未禁用，可轻微抖动；默认由 app._no_shake 控制
         if not getattr(app, '_no_shake', False):
-            shake(wrap, amplitude=3, cycles=8, interval=12)
+            shake(wrap, amplitude=3, cycles=8, interval=18)
     except Exception:
         pass
 
@@ -203,7 +219,7 @@ def on_death(app, wrap: tk.Frame, *, on_removed: Optional[Callable[[], None]] = 
     """Death feedback: clearer sequence and slower fade: flash -> small delay -> fade -> remove."""
     # 更明显的边框闪烁
     try:
-        flash_border(wrap, app.HL.get('sel_enemy_border', '#FF4D4F'), repeats=3, interval=90)
+        flash_border(wrap, app.HL.get('sel_enemy_border', '#FF4D4F'), repeats=3, interval=120)
     except Exception:
         pass
     # 闪烁后稍等再开始淡出，保证“先播动画再消失”的观感（总时长 ~1.2s）
@@ -228,18 +244,30 @@ def on_death(app, wrap: tk.Frame, *, on_removed: Optional[Callable[[], None]] = 
                 except Exception:
                     pass
     try:
-        wrap.after(150, _start_fade)
+        wrap.after(200, _start_fade)
     except Exception:
         _start_fade()
 
 
-def float_text(app, wrap: tk.Frame, text: str, *, color: str = '#c0392b', dy: int = 30, steps: int = 12, interval: int = 28):
+def float_text(app, wrap: tk.Frame, text: str, *, color: str = '#c0392b', dy: int = 30, steps: int = 18, interval: int = 36):
     """在卡片上方显示一段浮动文本（如 -10/+5），向上飘散后消失。
     - 字号放大到原来的 3 倍，提升可视性；
     - 背景模拟透明：去边框，背景与卡片一致；
     - 加一层 1px 阴影增强对比。
     """
     try:
+        # 启动前先清理已有浮动文字，避免并发导致的残留
+        try:
+            prev = getattr(wrap, '_float_text_widgets', None)
+            if prev:
+                for fw in list(prev):
+                    try:
+                        fw.destroy()
+                    except Exception:
+                        pass
+                wrap._float_text_widgets = []
+        except Exception:
+            pass
         # 选择更贴近内容的父容器：优先使用 wrap 内部的“inner”卡片（挂了 _model_ref）
         parent = wrap
         try:
@@ -283,6 +311,14 @@ def float_text(app, wrap: tk.Frame, text: str, *, color: str = '#c0392b', dy: in
             shadow.lift(); lbl.lift()
         except Exception:
             pass
+        # 记录到 wrap 上，便于 cancel_widget_anims 统一清理
+        try:
+            if not hasattr(wrap, '_float_text_widgets'):
+                wrap._float_text_widgets = []
+            wrap._float_text_widgets.extend([lbl, shadow])
+        except Exception:
+            pass
+
         state = {'i': 0}
 
         def step():
@@ -305,11 +341,17 @@ def float_text(app, wrap: tk.Frame, text: str, *, color: str = '#c0392b', dy: in
             if state['i'] <= steps:
                 _schedule(wrap, interval, step)
             else:
-                for w in (lbl, shadow):
+                for wdg in (lbl, shadow):
                     try:
-                        w.destroy()
+                        wdg.destroy()
                     except Exception:
                         pass
+                # 清理登记
+                try:
+                    floats = getattr(wrap, '_float_text_widgets', [])
+                    wrap._float_text_widgets = [w for w in floats if w not in (lbl, shadow)]
+                except Exception:
+                    pass
 
         step()
     except Exception:

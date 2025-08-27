@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from .. import ui_utils as U
+
 try:
     from src.core.events import subscribe as subscribe_event, unsubscribe as unsubscribe_event
 except Exception:  # pragma: no cover
@@ -131,6 +133,61 @@ class AlliesView:
                         inner._atk_var.set(f"ATK {atk}")
                         inner._ac_var.set(f"AC {10 + defv}")
                         inner._hp_var.set(f"HP {cur}/{mx}")
+                        # 同步装备按钮文字与 tooltip（不重建控件，避免闪烁）
+                        try:
+                            eq = getattr(card, 'equipment', None)
+                            lh = getattr(eq, 'left_hand', None) if eq else None
+                            rh_raw = getattr(eq, 'right_hand', None) if eq else None
+                            ar = getattr(eq, 'armor', None) if eq else None
+                            # 双手武器占用右手显示
+                            rh = lh if getattr(lh, 'is_two_handed', False) else rh_raw
+                            def _slot_text(label, item):
+                                return (getattr(item, 'name', '-')) if item else f"{label}: -"
+                            def _tip_text(item, label):
+                                if not item:
+                                    return f"{label}: 空槽"
+                                parts = []
+                                try:
+                                    av = int(getattr(item, 'attack', 0) or 0)
+                                    if av:
+                                        parts.append(f"+{av} 攻")
+                                except Exception:
+                                    pass
+                                try:
+                                    dv = int(getattr(item, 'defense', 0) or 0)
+                                    if dv:
+                                        parts.append(f"+{dv} 防")
+                                except Exception:
+                                    pass
+                                if getattr(item, 'is_two_handed', False):
+                                    parts.append('双手')
+                                head = getattr(item, 'name', '')
+                                tail = ' '.join(parts)
+                                return head + (("\n" + tail) if tail else '')
+                            def _rebind_tip(btn, provider):
+                                try:
+                                    btn.unbind('<Enter>'); btn.unbind('<Leave>'); btn.unbind('<Motion>')
+                                except Exception:
+                                    pass
+                                try:
+                                    U.attach_tooltip_deep(btn, provider)
+                                except Exception:
+                                    pass
+                            if hasattr(inner, '_btn_left') and inner._btn_left:
+                                inner._btn_left.config(text=_slot_text('左手', lh))
+                                _rebind_tip(inner._btn_left, lambda it=lambda: getattr(getattr(card, 'equipment', None), 'left_hand', None): _tip_text(it(), '左手'))
+                            if hasattr(inner, '_btn_right') and inner._btn_right:
+                                # 注意：若左手为双手武器，右手按钮显示左手物品
+                                _provider = lambda: (getattr(getattr(card, 'equipment', None), 'left_hand', None)
+                                                    if getattr(getattr(getattr(card, 'equipment', None), 'left_hand', None), 'is_two_handed', False)
+                                                    else getattr(getattr(card, 'equipment', None), 'right_hand', None))
+                                inner._btn_right.config(text=_slot_text('右手', rh))
+                                _rebind_tip(inner._btn_right, lambda it=_provider: _tip_text(it(), '右手'))
+                            if hasattr(inner, '_btn_armor') and inner._btn_armor:
+                                inner._btn_armor.config(text=_slot_text('盔甲', ar))
+                                _rebind_tip(inner._btn_armor, lambda it=lambda: getattr(getattr(card, 'equipment', None), 'armor', None): _tip_text(it(), '盔甲'))
+                        except Exception:
+                            pass
                     except Exception:
                         pass
                     break

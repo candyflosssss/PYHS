@@ -1,3 +1,5 @@
-from .inventory_ui import *  # noqa: F401,F403
+"""UI package.
 
-__all__ = [name for name in globals() if not name.startswith('_')]
+Runtime UI is implemented under `src.ui.tkinter`. No wildcard re-exports here
+to avoid pulling legacy/console modules into distributions.
+"""

@@ -21,47 +21,6 @@ def clean_ansi(name: str) -> str:
         return str(name)
 
 
-def attach_tooltip(widget: tk.Widget, text_provider: Callable[[], str] | str):
-    tip = {'win': None}
-
-    def _safe_destroy(w: tk.Toplevel):
-        # 通过 after 延迟销毁，避免在 Tcl 回调执行期间直接删除命令导致异常
-        try:
-            w.after(0, lambda: (w.destroy()))
-        except Exception:
-            try:
-                w.destroy()
-            except Exception:
-                pass
-
-    def show(_evt=None):
-        try:
-            text = text_provider() if callable(text_provider) else str(text_provider)
-            if not text or tip['win'] is not None:
-                return
-            x = widget.winfo_rootx() + 10
-            y = widget.winfo_rooty() + widget.winfo_height() + 6
-            tw = tk.Toplevel(widget)
-            tw.wm_overrideredirect(True)
-            tw.wm_geometry(f"+{x}+{y}")
-            lbl = ttk.Label(tw, text=text, relief='solid', borderwidth=1, padding=6, background='#ffffe0')
-            lbl.pack()
-            tip['win'] = tw
-        except Exception:
-            pass
-
-    def hide(_evt=None):
-        w = tip.get('win')
-        if w is not None:
-            tip['win'] = None
-            try:
-                _safe_destroy(w)
-            except Exception:
-                pass
-
-    widget.bind('<Enter>', show)
-    widget.bind('<Leave>', hide)
-
 
 def attach_tooltip_deep(root_widget: tk.Widget, text_provider: Callable[[], str] | str):
     tip = {'win': None}

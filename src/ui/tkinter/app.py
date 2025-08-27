@@ -1,7 +1,11 @@
-"""Full GameTkApp implementation migrated from `ui.gui_app`.
+"""Tk GUI 应用主入口（GameTkApp）。
 
-This module lives in the `ui.tkinter` package and therefore uses
-relative imports for other UI helpers.
+要点：
+- 采用“视图 + 控制器”拆分：
+	- 视图负责渲染与自身订阅（EnemiesView / AlliesView / ResourcesView / OperationsView）。
+	- SelectionController 负责选中/高亮；TargetingEngine 负责技能目标会话。
+- app 作为壳层：组装窗口、路由事件、少量跨区协调（日志/菜单/全局高亮重置/命令入口）。
+- 资源/背包/敌人区/装备的细粒度刷新已下放到各视图；app 仅保留场景切换事件处理。
 """
 from __future__ import annotations
 
@@ -16,9 +20,7 @@ from src.game_modes.pve_controller import SimplePvEController
 from .. import colors as C
 from . import ui_utils as U
 from .dialogs.equipment_dialog import EquipmentDialog
-from .dialogs.target_picker import TargetPickerDialog
 from . import animations as ANIM
-from . import cards as tk_cards
 from .views import EnemiesView, AlliesView, ResourcesView, OperationsView
 from .widgets.log_pane import LogPane
 from src.ui.targeting.specs import DEFAULT_SPECS, SkillTargetSpec
@@ -35,68 +37,47 @@ except Exception:  # pragma: no cover
 
 class GameTkApp:
 	# ---------------------------------------------------------------------------
-	# 函数索引与用途说明（维护导读）
-	#
-	# 初始化/基础：
-	# - __init__: 创建 Tk 根窗体、菜单与游戏区域，挂载视图订阅，按 initial_scene 可直接入局。
-	# - _bind_views_context: 让各视图持有当前 game，引导它们自行读取 zone/entity。
-	# - _log_exception: 捕获并写入日志区域（或控制台），避免静默失败。
-	# - _reset_highlights: 清除卡面/敌人高亮边框与背景，防止残留。
-	# - _send: 统一命令入口，兼容旧别名（a/eq/uneq/t/use/end/craft 等）后转发给控制器。
-	#
-	# 事件（来自模型/控制器）：
-	# - _on_event_scene_changed: 场景切换；进入 UI 抑制窗口，稍后全量刷新，期间清理选择/目标态。
-	# - _on_event_inventory_changed: 背包/资源变化，仅刷新资源/背包区域（视图负责）。
-	# - _on_enemy_zone_event: 敌人区 ObservableList 变更，合并调度一次战场轻量重绘。
-	# - _on_resource_zone_event: 资源区变更，刷新资源与操作栏（可被抑制并合并）。
-	# - _on_event_equipment_changed: 装备变更；刷新操作栏与受影响卡面文本，尽量避免整页刷新。
-	# - _on_event_resource_changed: 资源文本/按钮更新（细粒度）。
-	#
-	# 菜单/主界面：
-	# - _build_menu: 主菜单 UI（开始/改名/选择地图/刷新/退出）。
-	# - _menu_profile: 菜单顶栏的当前玩家/场景展示文本。
-	# - _menu_start: 依据配置选择并进入最近地图；若列表变更选择默认主图。
-	# - _menu_rename: 修改玩家名并保存配置。
-	# - _menu_choose_pack: 弹出地图组+主地图选择对话框并保存选择。
-	# - _menu_refresh_packs: 重新扫描场景包。
-	# - _build_game: 游戏主界面布局（敌人区/资源与背包/队伍/操作栏/日志）。
-	#
-	# 刷新与渲染：
-	# - refresh_all: 全量刷新（资源/背包、日志、敌人/队伍卡片、操作栏），并重应用高亮。
-	# - refresh_battlefield_only: 轻量刷新战场（敌人+队伍+操作栏），尽量保持微更新。
-	# - _schedule_battlefield_refresh: 去抖/合并调度下一帧轻量刷新（避免短时间多次重绘）。
-	# - _render_enemy_cards/_create_enemy_card: 委托 EnemiesView 渲染；必要时回落到本地卡片工厂。
-	# - _render_cards/_create_character_card: 委托 AlliesView 渲染；必要时回落。
-	# - _render_resources: 委托 ResourcesView 渲染资源与背包。
-	# - _render_operations: 委托 OperationsView 渲染所选队员可用操作。
-	#
-	# 交互（逐步收敛到 SelectionController/TargetingEngine）：
-	# - _select_skill: 旧路径：选择技能后高亮候选（保留兼容）。
-	# - begin_skill: 统一技能入口；调用 TargetingEngine.begin，若无需目标则直接执行并清理。
-	# - _confirm_skill: 执行技能/普攻命令并清理选择与目标态。
-	# - _cancel_skill: 取消当前目标会话并恢复 UI。
-	# - _update_target_highlights: 根据 TargetingEngine 候选/已选应用卡面高亮（微更新）。
-	# - _op_attack/_op_manage_equipment/_slot_click: 旧操作入口（攻击/装备交互），逐步转交视图/控制器。
-	# - _open_equip_dialog: 打开装备管理对话框。
-	# - _open_target_picker: 旧的弹窗目标选择器（现使用内联 + SelectionController）。
-	#
-	# 工具/日志/命令：
-	# - _attach_tooltip/_attach_tooltip_deep: 悬浮提示工具（控件或整棵子树）。
-	# - _append_info/_append_log: 写入信息/战斗日志（结构化与文本）。
-	# - _selected_index/_pick_resource: 列表选择/拾取资源的便捷函数。
-	# - on_pick/on_use_or_equip/on_unequip_dialog/on_craft_quick: 快捷按钮与弹窗动作处理。
-	# - _run_cmd/_after_cmd: 直接执行指令字符串并在日志/界面上反映结果。
-	#
-	# 生命周期：
-	# - _start_game: 进入游戏模式，绑定视图上下文，输出初始状态，并刷新 UI。
-	# - _back_to_menu: 返回主菜单并清理游戏视图。
-	# - run/_on_close: 进入 Tk 主循环/关闭前保存与清理。
-	# - run_tk: 外部启动入口函数（便于脚本/打包调用）。
-	# ---------------------------------------------------------------------------
+	# 函数索引与用途说明（阅读导引）
+
+	# 初始化/基础
+	# - __init__: 创建 Tk 根窗体、菜单与游戏区域, 初始化样式与视图, 可按 initial_scene 直接入局。
+	# - _bind_views_context: 让各视图持有当前 game 引用, 由视图自行读取 zone/entity 与订阅事件。
+	# - _log_exception: 统一异常落日志(或控制台)。
+	# - _reset_highlights: 恢复卡片/敌人默认描边与底色, 清理残留高亮。
+	# - _send: 统一命令入口, 兼容旧动词(a/eq/uneq/t/u/craft/back/end/skill等)后转发控制器。
+
+	# 事件(来自模型/控制器)
+	# - _on_event_scene_changed: 场景切换; 进入 UI 抑制窗口 -> 清理选择态 -> 播放过渡层 -> 延后重建视图。
+
+	# 菜单/主界面
+	# - _build_menu: 主菜单 UI(开始/改名/选择地图组/刷新/退出)。
+	# - _menu_profile/_menu_start/_menu_rename/_menu_choose_pack/_menu_refresh_packs。
+	# - _build_game: 游戏主界面布局(敌人区/资源与背包/队伍/操作栏/日志)。
+
+	# 刷新与渲染
+	# - refresh_all: 触发视图自渲染(资源/敌人/队伍/操作栏), 并更新场景标题。
+	# - _render_resources: 委托 ResourcesView 渲染资源与背包(抑制期合并)。
+	# - _render_operations: 委托 OperationsView 渲染所选队员可用操作(抑制期合并)。
+	# - refresh_battlefield_only/_schedule_battlefield_refresh: 兼容保留的 no-op(视图自调度)。
+
+	# 交互(统一走 SelectionController + TargetingEngine)
+	# - begin_skill: 技能入口; TargetingEngine.begin -> 无需目标则直接执行。
+	# - _confirm_skill/_cancel_skill/_update_target_highlights: 确认/取消以及微更新高亮。
+	# - _slot_click: 卡片装备槽点击(卸下/更换/打开装备对话框)。
+	# - _open_equip_dialog: 打开装备管理对话框并按返回值发送 eq 指令。
+
+	# 工具/日志/命令
+	# - _append_info/_append_log: 统一写入战斗日志(支持结构化 dict)。
+	# - _selected_index/_pick_resource: 列表选择与资源拾取(局部刷新)。
+	# - _run_cmd/_after_cmd: 运行控制器命令并落地日志/状态快照。
+
+	# 生命周期
+	# - _start_game: 进入游戏模式, 绑定视图上下文, 输出初始状态并全量刷新。
+	# - _back_to_menu: 返回主菜单, 卸载视图并清理。
+	# - run/_on_close: 进入 Tk 主循环/关闭前取消订阅与销毁窗口。
+	# - run_tk: 外部启动入口函数(脚本/打包共用)。
 	def __init__(self, player_name: str = "玩家", initial_scene: Optional[str] = None):
-		"""构造应用与主窗口。
-		场景：程序启动或从 run_tk 进入；会初始化菜单与游戏界面并挂载视图与事件。
-		"""
+		"""构造应用与主窗口。初始化菜单/游戏界面并挂载视图与场景事件。"""
 		self.mode = "menu"
 		self.cfg = (load_config() if callable(load_config) else {"name": player_name, "last_pack": "", "last_scene": "default_scene.json"})
 		if player_name and self.cfg.get("name") != player_name:
@@ -122,14 +103,14 @@ class GameTkApp:
 		# 高亮风格（可调色）：候选与选中分别有描边与浅底色
 		self._wrap_bg_default = self.root.cget('bg')
 		self.HL = {
-			'cand_enemy_border': '#FAD96B',  # 候选敌人描边（亮黄）
-			'cand_enemy_bg':     '#FFF7CC',  # 候选敌人底色（浅黄）
-			'cand_ally_border':  '#7EC6F6',  # 候选友方描边（亮蓝）
-			'cand_ally_bg':      '#E6F4FF',  # 候选友方底色（浅蓝）
-			'sel_enemy_border':  '#FF4D4F',  # 选中敌人描边（醒目红）
-			'sel_enemy_bg':      '#FFE6E6',  # 选中敌人底色（淡红）
-			'sel_ally_border':   '#1E90FF',  # 选中友方描边（深蓝）
-			'sel_ally_bg':       '#D6EBFF',  # 选中友方底色（淡蓝）
+			'cand_enemy_border': '#FAD96B',
+			'cand_enemy_bg':     '#FFF7CC',
+			'cand_ally_border':  '#7EC6F6',
+			'cand_ally_bg':      '#E6F4FF',
+			'sel_enemy_border':  '#FF4D4F',
+			'sel_enemy_bg':      '#FFE6E6',
+			'sel_ally_border':   '#1E90FF',
+			'sel_ally_bg':       '#D6EBFF',
 		}
 
 		# Containers
@@ -177,7 +158,7 @@ class GameTkApp:
 	# ---- helpers ----
 
 	def _bind_views_context(self):
-		"""让各 View 直接持有 game 引用，避免通过 app 转发。"""
+		"""让各 View 直接持有 game 引用, 避免通过 app 转发."""
 		try:
 			g = self.controller.game if (self.controller and hasattr(self.controller, 'game')) else None
 		except Exception:
@@ -191,7 +172,7 @@ class GameTkApp:
 					pass
 
 	def _log_exception(self, exc: Exception, context: str = ""):
-		"""记录异常到日志控件或打印，避免 silent pass。"""
+		"""记录异常到日志控件或打印, 避免 silent pass."""
 		try:
 			msg = f"ERROR{('['+context+']') if context else ''}: {exc}"
 			if hasattr(self, 'text_log'):
@@ -205,7 +186,7 @@ class GameTkApp:
 			print('ERROR while logging exception', exc)
 
 	def _reset_highlights(self):
-		"""恢复所有卡片/敌人默认边框色，防止残留高亮。"""
+		"""恢复所有卡片/敌人默认边框色, 防止残留高亮."""
 		try:
 			for w in list(getattr(self, 'enemy_card_wraps', {}).values()):
 				try:
@@ -230,27 +211,24 @@ class GameTkApp:
 		parts = cmd.split()
 		if not parts:
 			return [], {}
-		verb = parts[0]
+		verb = parts[0].lower()
 		rest = parts[1:]
-		m = {
+		alias = {
 			'attack': 'a', 'atk': 'a', 'a': 'a',
-			'heal': 'heal',
 			'equip': 'eq', 'eq': 'eq',
 			'unequip': 'uneq', 'uneq': 'uneq',
-			'pick': 't', 'take': 't', 't': 't',
-			'use': 'use',
-			'end': 'end', 'back': 'back',
-			'craft': 'craft'
+			'take': 't', 't': 't',
+			'use': 'use', 'u': 'use',
+			'craft': 'craft', 'c': 'craft',
+			'end': 'end',
+			'back': 'back', 'b': 'back',
+			'skill': 'skill',
+			'inv': 'i', 'i': 'i',
+			'moveeq': 'moveeq',
+			's': 's',
 		}
-		mapped = m.get(verb, verb)
-		# craft with number -> cN
-		if mapped == 'craft':
-			if rest:
-				mapped_cmd = f"c{rest[0]}"
-			else:
-				mapped_cmd = 'craft'
-		else:
-			mapped_cmd = ' '.join([mapped] + rest)
+		mapped = alias.get(verb, verb)
+		mapped_cmd = ' '.join([mapped] + rest)
 		try:
 			out = self.controller._process_command(mapped_cmd)
 			return out
@@ -258,10 +236,14 @@ class GameTkApp:
 			self._log_exception(e, f'_send {mapped_cmd}')
 			return [], {}
 
+
+
+
+
 	# -------- Event handlers --------
 	def _on_event_scene_changed(self, _evt: str, payload: dict):
-		"""场景切换事件：进入 UI 抑制期，稍后全量刷新并清理选择/目标状态。"""
-		# 场景切换：立即更新标题与状态；稍作延时让死亡/伤害浮字有机会展示，然后再全量刷新。
+		"""场景切换事件: 进入 UI 抑制期, 稍后全量刷新并清理选择/目标状态."""
+		# 场景切换: 立即更新标题与状态; 稍作延时让死亡/伤害浮字有机会展示, 然后再全量刷新。
 		try:
 			# 进入抑制窗口：期间的 UI 刷新请求被合并，待窗口结束后一次性处理
 			self._suspend_ui_updates = True
@@ -308,139 +290,6 @@ class GameTkApp:
 		except Exception:
 			_do_full()
 
-
-	def _on_event_inventory_changed(self, _evt: str, _payload: dict):
-		"""背包/资源变更事件：仅刷新资源区与背包列表（由 ResourcesView 负责）。"""
-		# 背包/资源变化：只刷新资源/背包区域
-		try:
-			if getattr(self, '_suspend_ui_updates', False):
-				self._pending_resource_refresh = True
-				return
-			self._render_resources()
-		except Exception:
-			pass
-
-	def _on_enemy_zone_event(self, _evt: str, _payload: dict):
-		"""敌人区的 ObservableList 事件：添加/移除/清空/重置/变化。统一做轻量战场重绘（去重调度）。"""
-		try:
-			self._schedule_battlefield_refresh()
-		except Exception:
-			pass
-
-	def _on_resource_zone_event(self, _evt: str, _payload: dict):
-		"""资源区的 ObservableList 事件：仅重绘资源按钮容器。"""
-		try:
-			if getattr(self, '_suspend_ui_updates', False):
-				self._pending_resource_refresh = True
-				self._pending_ops_refresh = True
-				return
-			self._render_resources()
-			# 操作栏可能受资源使用影响（例如药水可用性），一并刷新
-			self._render_operations()
-		except Exception:
-			pass
-
-	def _on_event_equipment_changed(self, _evt: str, _payload: dict):
-		"""装备变更事件：刷新操作栏、背包清单，并微更新相关卡片数值文本。"""
-		# 装备变化：仅刷新操作栏与受影响卡片的数值，避免整块重绘
-		try:
-			if getattr(self, '_suspend_ui_updates', False):
-				self._pending_ops_refresh = True
-				# 卡片的细节变更会在切换完成时统一刷新
-				return
-			card = (_payload or {}).get('owner') or (_payload or {}).get('card')
-			self._render_operations()
-			# 背包列表也会改变（装备/卸下），需要刷新（交由 ResourcesView）
-			try:
-				v = self.views.get('resources')
-				if v and hasattr(v, 'render_inventory'):
-					v.render_inventory()
-			except Exception:
-				pass
-			if not card:
-				return
-			# 更新对应卡片
-			for idx, wrap in (getattr(self, 'card_wraps', {}) or {}).items():
-				inner = next((ch for ch in wrap.winfo_children() if hasattr(ch, '_model_ref')), None)
-				if inner is None or getattr(inner, '_model_ref', None) is not card:
-					continue
-				try:
-					atk = int(getattr(card, 'get_total_attack')() if hasattr(card, 'get_total_attack') else getattr(card, 'attack', 0))
-					defv = int(getattr(card, 'get_total_defense')() if hasattr(card, 'get_total_defense') else getattr(card, 'defense', 0))
-					cur = int(getattr(card, 'hp', 0)); mx = int(getattr(card, 'max_hp', cur))
-					inner._atk_var.set(f"ATK {atk}")
-					inner._ac_var.set(f"AC {10 + defv}")
-					inner._hp_var.set(f"HP {cur}/{mx}")
-					# 同步装备按钮文字与提示（不重建控件，避免闪烁）
-					try:
-						eq = getattr(card, 'equipment', None)
-						lh = getattr(eq, 'left_hand', None) if eq else None
-						rh_raw = getattr(eq, 'right_hand', None) if eq else None
-						ar = getattr(eq, 'armor', None) if eq else None
-						# 双手武器占用右手显示
-						rh = lh if getattr(lh, 'is_two_handed', False) else rh_raw
-						def _slot_text(label, item):
-							return (getattr(item, 'name', '-')) if item else f"{label}: -"
-						def _tip_text(item, label):
-							if not item:
-								return f"{label}: 空槽"
-							parts = []
-							try:
-								av = int(getattr(item, 'attack', 0) or 0)
-								if av:
-									parts.append(f"+{av} 攻")
-							except Exception:
-								pass
-							try:
-								dv = int(getattr(item, 'defense', 0) or 0)
-								if dv:
-									parts.append(f"+{dv} 防")
-							except Exception:
-								pass
-							if getattr(item, 'is_two_handed', False):
-								parts.append('双手')
-							head = getattr(item, 'name', '')
-							tail = ' '.join(parts)
-							return head + (("\n" + tail) if tail else '')
-						# 更新文字
-						if hasattr(inner, '_btn_left') and inner._btn_left:
-							inner._btn_left.config(text=_slot_text('左手', lh))
-						if hasattr(inner, '_btn_right') and inner._btn_right:
-							inner._btn_right.config(text=_slot_text('右手', rh))
-						if hasattr(inner, '_btn_armor') and inner._btn_armor:
-							inner._btn_armor.config(text=_slot_text('盔甲', ar))
-						# 重新绑定提示：先解绑，后绑定最新文本
-						def _rebind_tip(btn, provider):
-							try:
-								btn.unbind('<Enter>'); btn.unbind('<Leave>'); btn.unbind('<Motion>')
-							except Exception:
-								pass
-							try:
-								U.attach_tooltip_deep(btn, provider)
-							except Exception:
-								pass
-						if hasattr(inner, '_btn_left') and inner._btn_left:
-							_rebind_tip(inner._btn_left, lambda it=lambda: getattr(getattr(card, 'equipment', None), 'left_hand', None): _tip_text(it(), '左手'))
-						if hasattr(inner, '_btn_right') and inner._btn_right:
-							_rebind_tip(inner._btn_right, lambda it=lambda: (getattr(getattr(card, 'equipment', None), 'left_hand', None) if getattr(getattr(getattr(card, 'equipment', None), 'left_hand', None), 'is_two_handed', False) else getattr(getattr(card, 'equipment', None), 'right_hand', None)): _tip_text(it(), '右手'))
-						if hasattr(inner, '_btn_armor') and inner._btn_armor:
-							_rebind_tip(inner._btn_armor, lambda it=lambda: getattr(getattr(card, 'equipment', None), 'armor', None): _tip_text(it(), '盔甲'))
-					except Exception:
-						pass
-				except Exception:
-					pass
-				break
-		except Exception:
-			pass
-
-
-	def _on_event_resource_changed(self, _evt: str, _payload: dict):
-		"""资源区变更事件：仅重绘资源按钮容器。"""
-		# 资源区改变：只刷新资源按钮
-		try:
-			self._render_resources()
-		except Exception:
-			pass
 
 	# -------- Menu --------
 	def _build_menu(self, parent: tk.Widget):
@@ -714,54 +563,7 @@ class GameTkApp:
 			except Exception:
 				pass
 
-	def _render_enemy_cards(self):
-		"""渲染敌人卡片容器：优先委托 EnemiesView。"""
-		# 交由视图实现
-		v = self.views.get('enemies')
-		return v.render_all(self.enemy_cards_container) if v else None
 
-	def _create_enemy_card(self, parent: tk.Widget, e, e_index: int) -> ttk.Frame:
-		"""创建单个敌人卡片控件（兼容旧 API；优先视图）。"""
-		# 兼容旧 API：直接转给视图实现
-		v = self.views.get('enemies')
-		if v and hasattr(v, '_create_enemy_card'):
-			return v._create_enemy_card(parent, e, e_index)
-		return tk_cards.create_character_card(self, parent, e, e_index, is_enemy=True)
-
-	def _select_skill(self, m_index: int, skill_type: str):
-		"""旧技能选择路径：仅做候选高亮与弹窗选择，保留兼容。"""
-		# 选择技能后高亮可用目标（不立即执行）
-		self.selected_skill = skill_type
-		self.skill_target_index = None
-		self.skill_target_token = None
-		if skill_type == "attack":
-			# 高亮可攻击敌人
-			for idx, wrap in self.enemy_card_wraps.items():
-				e = getattr(self.controller.game, 'enemies', [])[idx-1] if hasattr(self.controller.game, 'enemies') else None
-				can_attack = getattr(e, 'can_be_attacked', True)
-				if can_attack:
-					wrap.configure(highlightbackground=self.HL['cand_enemy_border'], background=self.HL['cand_enemy_bg'])
-				else:
-					wrap.configure(highlightbackground="#cccccc", background=self._wrap_bg_default)
-		elif skill_type == "heal":
-			# 高亮可治疗队友（HP未满且不是自己）
-			for idx, wrap in self.card_wraps.items():
-				m = getattr(self.controller.game.player, 'board', [])[idx-1] if hasattr(self.controller.game.player, 'board') else None
-				can_heal = m and getattr(m, 'hp', 0) < getattr(m, 'max_hp', 0) and idx != m_index
-				if can_heal:
-					wrap.configure(highlightbackground=self.HL['cand_ally_border'], background=self.HL['cand_ally_bg'])
-				else:
-					wrap.configure(highlightbackground="#cccccc", background=self._wrap_bg_default)
-		# 展示确认/取消
-		try:
-			self._render_operations()
-		except Exception:
-			pass
-		# 同时弹出统一目标选择器，避免混乱
-		try:
-			self._open_target_picker(skill_type, m_index)
-		except Exception:
-			pass
 
 	def begin_skill(self, m_index: int, name: str):
 		"""统一技能入口：根据 skill_specs 决定目标要求并引导 UI。
@@ -905,19 +707,7 @@ class GameTkApp:
 
 
 
-	def _render_cards(self):
-		"""渲染我方卡片容器：优先委托 AlliesView。"""
-		# 交由视图实现
-		v = self.views.get('allies')
-		return v.render_all(self.cards_container) if v else None
 
-	def _create_character_card(self, parent: tk.Widget, m, m_index: int) -> ttk.Frame:
-		"""创建单个我方卡片控件（兼容旧 API；优先视图）。"""
-		# 兼容旧 API：直接转给视图实现
-		v = self.views.get('allies')
-		if v and hasattr(v, '_create_character_card'):
-			return v._create_character_card(parent, m, m_index)
-		return tk_cards.create_character_card(self, parent, m, m_index)
 
 	def _render_resources(self):
 		"""渲染资源与背包区域：抑制期合并，优先委托 ResourcesView。"""
@@ -944,27 +734,7 @@ class GameTkApp:
 		v = self.views.get('ops')
 		return v.render(self.frm_operations) if v else None
 
-	def _op_attack(self, m_index: int):
-		"""旧攻击入口：直接向控制器发送 atk 命令并追加日志。"""
-		# 发起攻击，期望 controller 能处理选择目标或提示
-		out = self._send(f"atk m{m_index}")
-		try:
-			resp = out[0] if isinstance(out, (list, tuple)) and len(out) > 0 else out
-		except Exception:
-			resp = out
-		self._after_cmd(resp)
 
-	def _op_manage_equipment(self, m_index: int):
-		"""旧装备管理入口：打开装备对话框。"""
-		# 简单触发打开第一个槽的装备对话作为入口
-		try:
-			board = self.controller.game.player.board
-			m = board[m_index - 1]
-			eq = getattr(m, 'equipment', None)
-			first_slot = 'left' if True else 'right'
-			self._open_equip_dialog(m_index, first_slot)
-		except Exception:
-			pass
 
 	# -------- Equip/Actions --------
 	def _slot_click(self, m_index: int, slot_key: str, item):
@@ -1015,96 +785,7 @@ class GameTkApp:
 			resp = out
 		self._after_cmd(resp)
 
-	def _attach_tooltip(self, widget: tk.Widget, text_provider):
-		"""保留原版：仅绑定到单个控件。"""
-		tip = {'win': None}
-		def show(_evt=None):
-			try:
-				text = text_provider() if callable(text_provider) else str(text_provider)
-				if not text or tip['win'] is not None:
-					return
-				x = widget.winfo_rootx() + 10
-				y = widget.winfo_rooty() + widget.winfo_height() + 6
-				tw = tk.Toplevel(widget)
-				tw.wm_overrideredirect(True)
-				tw.wm_geometry(f"+{x}+{y}")
-				lbl = ttk.Label(tw, text=text, relief='solid', borderwidth=1, padding=6, background='#ffffe0')
-				lbl.pack()
-				tip['win'] = tw
-			except Exception:
-				pass
-		def hide(_evt=None):
-			w = tip.get('win')
-			if w is not None:
-				try:
-					w.destroy()
-				except Exception:
-					pass
-				tip['win'] = None
-		widget.bind('<Enter>', show)
-		widget.bind('<Leave>', hide)
 
-	def _attach_tooltip_deep(self, root_widget: tk.Widget, text_provider):
-		"""改进版：将提示绑定到 root_widget 及其所有后代，
-		并在离开整个卡片区域时才隐藏，避免被文字/子控件挡住或闪烁。
-		"""
-		tip = {'win': None}
-
-		def show(_evt=None):
-			try:
-				text = text_provider() if callable(text_provider) else str(text_provider)
-				if not text:
-					return
-				if tip['win'] is None:
-					x = root_widget.winfo_rootx() + 10
-					y = root_widget.winfo_rooty() + root_widget.winfo_height() + 6
-					tw = tk.Toplevel(root_widget)
-					tw.wm_overrideredirect(True)
-					tw.wm_geometry(f"+{x}+{y}")
-					lbl = ttk.Label(tw, text=text, relief='solid', borderwidth=1, padding=6, background='#ffffe0')
-					lbl.pack()
-					tip['win'] = tw
-			except Exception:
-				pass
-
-		def hide_if_outside(_evt=None):
-			try:
-				# 指针位置不在 root_widget 矩形内时隐藏
-				rx, ry = root_widget.winfo_rootx(), root_widget.winfo_rooty()
-				rw, rh = root_widget.winfo_width(), root_widget.winfo_height()
-				px, py = root_widget.winfo_pointerx(), root_widget.winfo_pointery()
-				inside = (rx <= px <= rx + rw) and (ry <= py <= ry + rh)
-				if not inside and tip['win'] is not None:
-					w = tip.get('win')
-					if w is not None:
-						try:
-							w.destroy()
-						except Exception:
-							pass
-						tip['win'] = None
-			except Exception:
-				# 兜底直接隐藏
-				w = tip.get('win')
-				if w is not None:
-					try:
-						w.destroy()
-					except Exception:
-						pass
-					tip['win'] = None
-
-		# 绑定根与所有后代
-		def bind_recursive(w: tk.Widget):
-			try:
-				w.bind('<Enter>', show, add='+')
-				w.bind('<Leave>', hide_if_outside, add='+')
-				# 在移动时也检查以便在从上往下扫掠时及时隐藏
-				w.bind('<Motion>', hide_if_outside, add='+')
-			except Exception:
-				pass
-			for ch in getattr(w, 'winfo_children', lambda: [])():
-				bind_recursive(ch)
-
-		bind_recursive(root_widget)
 
 	# 移除信息区 hover，统一使用日志悬浮（由 LogPane 管理）
 
@@ -1177,155 +858,7 @@ class GameTkApp:
 		# 保持当前选中高亮与卡片视图不变，避免视觉跳动
 
 
-	def on_attack(self):
-		"""操作栏“攻击”按钮：要求先选中队员，否则提示，然后走统一技能入口。"""
-		if not self.controller:
-			return
-		if not self.selected_member_index:
-			messagebox.showinfo("提示", "请先在底部卡片选择一名队员(mN)")
-			return
-		# 统一入口
-		self.begin_skill(self.selected_member_index, 'attack')
 
-	def _open_target_picker(self, mode: str, m_index: int):
-		"""使用 TargetPickerDialog 选择目标，返回后设置 token 并确认执行。"""
-		# 构建候选
-		candidates = []  # list[(token, label)]
-		if mode == 'attack':
-			enemies = getattr(self.controller.game, 'enemies', []) or []
-			for i, e in enumerate(enemies, start=1):
-				try:
-					if not getattr(e, 'can_be_attacked', True):
-						continue
-					hp = int(getattr(e, 'hp', 0)); mx = int(getattr(e, 'max_hp', hp))
-					if hp <= 0:
-						continue
-					name = getattr(e, 'display_name', None) or getattr(e, 'name', f"敌人#{i}")
-					candidates.append((f"e{i}", f"e{i}  {name}  HP {hp}/{mx}"))
-				except Exception:
-					candidates.append((f"e{i}", f"e{i}"))
-		elif mode == 'heal':
-			board = getattr(self.controller.game.player, 'board', []) or []
-			for i, m in enumerate(board, start=1):
-				try:
-					if i == m_index:
-						continue
-					hp = int(getattr(m, 'hp', 0)); mx = int(getattr(m, 'max_hp', hp))
-					if hp <= 0 or hp >= mx:
-						continue
-					name = getattr(m, 'display_name', None) or getattr(m, 'name', f"队员#{i}")
-					candidates.append((f"m{i}", f"m{i}  {name}  HP {hp}/{mx}"))
-				except Exception:
-					candidates.append((f"m{i}", f"m{i}"))
-		else:
-			return
-		if not candidates:
-			messagebox.showinfo("提示", "没有可用的目标")
-			return
-		# 打开对话框
-		dlg = TargetPickerDialog(self.root, ("选择攻击目标" if mode == 'attack' else "选择治疗目标"), candidates)
-		picked = dlg.show()
-		if not picked:
-			return
-		self.skill_target_token = picked
-		# 同步直观高亮：敌人或友方
-		try:
-			if picked.startswith('e'):
-				self.selected_enemy_index = int(picked[1:])
-			elif picked.startswith('m'):
-				self.selected_member_index = m_index
-		except Exception:
-			pass
-		# 立即执行
-		self._confirm_skill()
-
-	def on_pick(self):
-		"""操作栏“拾取”按钮：提示请直接点击左侧资源按钮。"""
-		if not self.controller:
-			return
-		messagebox.showinfo("提示", "请点击右侧资源按钮进行拾取")
-
-	def on_use_or_equip(self):
-		"""使用/装备背包条目：根据当前选择解析为 eq 或 use 指令并执行。"""
-		if not self.controller:
-			return
-		idx = self._selected_index(self.list_inv)
-		if idx is None:
-			messagebox.showinfo("提示", "请选择背包条目(iN 或物品名行)")
-			return
-		raw = self.list_inv.get(idx)
-		parts = raw.split()
-		token = parts[0]
-		tgt_m = None
-		if self.selected_member_index:
-			tgt_m = f"m{self.selected_member_index}"
-		if token.startswith('i') and token[1:].isdigit():
-			if not tgt_m:
-				messagebox.showinfo("提示", "装备需先在底部卡片选择目标(mN)")
-				return
-			out = self._send(f"eq {token} {tgt_m}")
-			try:
-				resp = out[0] if isinstance(out, (list, tuple)) and len(out) > 0 else out
-			except Exception:
-				resp = out
-		else:
-			name = raw if not token.startswith('i') else ' '.join(parts[1:])
-			cmd = f"use {name}"
-			if tgt_m:
-				cmd += f" {tgt_m}"
-			out = self._send(cmd)
-			try:
-				resp = out[0] if isinstance(out, (list, tuple)) and len(out) > 0 else out
-			except Exception:
-				resp = out
-		self._after_cmd(resp)
-
-	def on_unequip_dialog(self):
-		"""弹窗输入槽位并发送卸下装备指令。"""
-		if not self.controller:
-			return
-		if not self.selected_member_index:
-			messagebox.showinfo("提示", "请先在底部卡片选择一名队员")
-			return
-		m_token = f"m{self.selected_member_index}"
-		slot = simpledialog.askstring("卸下装备", "输入槽位: left|right|armor", parent=self.root)
-		if not slot:
-			return
-		out = self._send(f"uneq {m_token} {slot}")
-		try:
-			resp = out[0] if isinstance(out, (list, tuple)) and len(out) > 0 else out
-		except Exception:
-			resp = out
-		self._after_cmd(resp)
-
-	def on_craft_quick(self):
-		"""快速合成：若选中合成条目则按编号合成，否则触发通用 craft。"""
-		if not self.controller:
-			return
-		idx = self._selected_index(self.list_inv)
-		if idx is None:
-			out = self._send("craft")
-			try:
-				resp = out[0] if isinstance(out, (list, tuple)) and len(out) > 0 else out
-			except Exception:
-				resp = out
-			self._after_cmd(resp)
-			return
-		raw = self.list_inv.get(idx).strip()
-		if raw.startswith('c') and raw[1:].split()[0].isdigit():
-			n = raw[1:].split()[0]
-			out = self._send(f"c{n}")
-			try:
-				resp = out[0] if isinstance(out, (list, tuple)) and len(out) > 0 else out
-			except Exception:
-				resp = out
-		else:
-			out = self._send("craft")
-		try:
-			resp = out[0] if isinstance(out, (list, tuple)) and len(out) > 0 else out
-		except Exception:
-			resp = out
-		self._after_cmd(resp)
 
 	def _run_cmd(self, cmd: str):
 		"""直接运行控制器命令字符串，并统一追加到日志。"""

@@ -475,7 +475,7 @@ class SimplePvEGame:
 
     # --- 技能实现（基础版，使用 dnd_rules 做判定与掷骰） ---
     def use_skill(self, skill_name: str, source_idx: int, target_token: str = None):
-        """Public entry to invoke a named skill from a minion (1-based index).
+        """Public entry to invoke a named skill from a minion (1-based index).      
         skill_name: 名称，如 'sweep'、'basic_heal' 等
         source_idx: minion index (1-based)
         target_token: 'eN' or 'mN' 或 None
