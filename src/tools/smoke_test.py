@@ -1,7 +1,11 @@
 # Smoke test: load scenes and execute a few skills to catch runtime errors fast.
 from __future__ import annotations
 import sys, os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Ensure 'src' package is importable by adding workspace root to sys.path
+_here = os.path.dirname(__file__)
+_root = os.path.abspath(os.path.join(_here, '..', '..'))
+if _root not in sys.path:
+    sys.path.insert(0, _root)
 from src.game_modes.simple_pve_game import SimplePvEGame
 
 

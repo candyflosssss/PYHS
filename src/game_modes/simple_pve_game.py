@@ -64,6 +64,12 @@ class SimplePvEGame:
         self.players = {self.player.name: self.player}
         # 初始化默认场景
         self._init_board()
+        # 启用被动系统（事件驱动）
+        try:
+            from src.systems import passives_system as PS
+            PS.setup()
+        except Exception:
+            pass
         # skill dispatch map
         self.skill_map = {
             'sweep': self._skill_sweep,
@@ -304,8 +310,12 @@ class SimplePvEGame:
 
     # --- 回合流 ---
     def start_turn(self):
-        # 重置随从攻击标记
+        # 回合开始：回满体力，并保留 can_attack 标记用于兼容旧 UI 文本
         for c in self.player.board:
+            try:
+                c.refill_stamina()
+            except Exception:
+                pass
             c.can_attack = True
 
     def _to_character_sheet(self, entity):
@@ -364,8 +374,14 @@ class SimplePvEGame:
         if not (0 <= enemy_idx < len(self.enemies)):
             return False, '敌人序号无效'
         m = self.player.board[minion_idx]
-        if not getattr(m, 'can_attack', True):
-            return False, '该随从本回合已攻击过'
+        # 新规则：攻击消耗体力（默认1），不足则不可攻击
+        try:
+            from src import settings as S
+            cost = int(getattr(S, 'get_skill_cost')('attack', 1))
+        except Exception:
+            cost = 1
+        if getattr(m, 'stamina', 0) < cost:
+            return False, '体力不足，无法攻击'
         e = self.enemies[enemy_idx]
         # 使用 DND 规则判定命中与伤害（保留向后兼容）
         try:
@@ -393,6 +409,10 @@ class SimplePvEGame:
                 hit_line = f"d20={roll} + 加值{bonus} = {total} vs AC {need}" if bonus is not None else f"d20={roll} vs AC {need}"
                 text = f"{m} 攻击 {getattr(e,'name',e)}: 未命中；{hit_line}"
                 self.log({'type': 'attack', 'text': text, 'meta': {'to_hit': th}})
+                try:
+                    m.spend_stamina(cost)
+                except Exception:
+                    pass
                 m.can_attack = False
                 return True, '攻击未命中'
             dmg_spec = (1, max(1, int(m.get_total_attack()))) if hasattr(m, 'get_total_attack') else (1, 1)
@@ -405,7 +425,6 @@ class SimplePvEGame:
         else:
             # 兼容旧流程：直接以攻击力造成伤害
             dealt = int(m.get_total_attack() if hasattr(m, 'get_total_attack') else getattr(m, 'attack', 0))
-
         prev_e = getattr(e, 'hp', 0)
         dead = e.take_damage(dealt)
         dealt = max(0, prev_e - getattr(e, 'hp', 0))
@@ -447,6 +466,17 @@ class SimplePvEGame:
         }
         self.log({'type': 'attack', 'text': text, 'meta': {'to_hit': th, 'damage': dmg_r, 'target': tgt_info, 'sources': {'attacker': src_info}}})
 
+        # 触发事件：攻击结算（供被动系统监听）
+        try:
+            publish_event('attack_resolved', {
+                'attacker': m,
+                'defender': e,
+                'damage': dealt,
+                'defender_dead': bool(dead)
+            })
+        except Exception:
+            pass
+
         # 反击判定：0 攻不反击、进攻方带 no_counter 不被反击
         from src.systems import skills as SK
         try:
@@ -456,8 +486,19 @@ class SimplePvEGame:
                 back = max(0, prev_m - m.hp)
                 if back > 0:
                     self.log(f"{e.name} 反击 {m}，造成 {back} 伤害（{m.hp}/{m.max_hp}）")
+                    try:
+                        publish_event('counter_resolved', {
+                            'attacker': e,
+                            'defender': m,
+                            'damage': back
+                        })
+                    except Exception:
+                        pass
         except Exception:
-            # 容错：若判定失败，不阻塞流程
+            pass
+        try:
+            m.spend_stamina(cost)
+        except Exception:
             pass
         m.can_attack = False
         if dead:
@@ -473,7 +514,7 @@ class SimplePvEGame:
                 return True, '攻击成功'
         return True, '攻击成功'
 
-    # --- 技能实现（基础版，使用 dnd_rules 做判定与掷骰） ---
+    # --- 技能入口（集中到 systems.skills_engine 执行） ---
     def use_skill(self, skill_name: str, source_idx: int, target_token: str = None):
         """Public entry to invoke a named skill from a minion (1-based index).      
         skill_name: 名称，如 'sweep'、'basic_heal' 等
@@ -481,9 +522,6 @@ class SimplePvEGame:
         target_token: 'eN' or 'mN' 或 None
         """
         try:
-            func = self.skill_map.get(skill_name)
-            if not func:
-                return False, f'未知技能: {skill_name}'
             # resolve source
             if not (1 <= source_idx <= len(self.player.board)):
                 return False, '随从索引无效'
@@ -499,14 +537,36 @@ class SimplePvEGame:
                     mi = int(target_token[1:]) - 1
                     if 0 <= mi < len(self.player.board):
                         tgt = self.player.board[mi]
-            result = func(src, tgt)
+            # 体力消耗：从配置读取，默认 1；若不足则直接失败
+            try:
+                from src import settings as S
+                cost = int(getattr(S, 'get_skill_cost')(skill_name, 1))
+            except Exception:
+                cost = 1
+            if getattr(src, 'stamina', 0) < cost:
+                return False, '体力不足'
+            # 统一经由 skills_engine 执行
+            try:
+                from src.systems import skills_engine as SE
+                ok, msg = SE.execute(self, skill_name, src, tgt)
+            except Exception:
+                # 兼容旧版：若注册表模块不可用，尝试回退到本类映射
+                func = getattr(self, 'skill_map', {}).get(skill_name)
+                if not func:
+                    return False, f'未知技能: {skill_name}'
+                ok, msg = func(src, tgt)
+            # 体力消耗实际扣除
+            try:
+                src.spend_stamina(cost)
+            except Exception:
+                pass
             # 技能结束后若清场，触发场景切换（如有定义）
             try:
                 if not self.enemies:
                     self._check_on_clear_transition()
             except Exception:
                 pass
-            return result
+            return ok, msg
         except Exception as e:
             try:
                 self.log({'type': 'error', 'text': f'技能执行出错: {e}', 'meta': {}})
@@ -745,6 +805,7 @@ class SimplePvEGame:
                         pass
             else:
                 self.log({'type': 'skill', 'text': f"{src} 使用 横扫 未命中 {e.name}", 'meta': meta})
+        # 兼容旧规则：使用技能后视为已行动一次（仅保留 UI 提示）
         src.can_attack = False
         return True, '横扫 执行完毕'
 
@@ -1617,14 +1678,17 @@ class SimplePvEGame:
             slot = it.get('slot') or ('armor' if t == 'armor' else ('left_hand' if it.get('two_handed') else 'right_hand'))
             two = bool(it.get('two_handed', it.get('twoHanded', False)))
             try:
+                # 支持 passives/active_skills 字段
+                act_sk = it.get('active_skills') or []
+                psv = it.get('passives') or {}
                 if t == 'weapon':
-                    w = WeaponItem(str(name), str(desc), dur, attack=atk, slot_type=str(slot), is_two_handed=two)
+                    w = WeaponItem(str(name), str(desc), dur, attack=atk, slot_type=str(slot), is_two_handed=two, active_skills=act_sk, passives=psv)
                     card.equipment.equip(w, game=self)
                 elif t == 'armor':
-                    a = ArmorItem(str(name), str(desc), dur, defense=dfn, slot_type='armor')
+                    a = ArmorItem(str(name), str(desc), dur, defense=dfn, slot_type='armor', active_skills=act_sk, passives=psv)
                     card.equipment.equip(a, game=self)
                 elif t == 'shield':
-                    s = ShieldItem(str(name), str(desc), dur, defense=dfn, attack=atk)
+                    s = ShieldItem(str(name), str(desc), dur, defense=dfn, attack=atk, active_skills=act_sk, passives=psv)
                     card.equipment.equip(s, game=self)
                 else:
                     # 未知类型忽略

@@ -9,7 +9,7 @@ class LogPane:
     Keeps tooltip/meta storage internal, exposing append(log) and clear().
     """
 
-    def __init__(self, parent: tk.Widget):
+    def __init__(self, parent: tk.Widget, tag_colors: dict | None = None):
         frame = ttk.LabelFrame(parent, text="战斗日志")
         frame.grid(row=0, column=0, sticky='nsew', padx=(0, 0), pady=(3, 3))
         self.frame = frame
@@ -21,16 +21,17 @@ class LogPane:
         self._meta = {}
         # tags
         try:
-            self.text.tag_configure('info', foreground='#222')
-            self.text.tag_configure('success', foreground='#27ae60')
-            self.text.tag_configure('warning', foreground='#E67E22')
-            self.text.tag_configure('error', foreground='#d9534f', underline=True)
-            self.text.tag_configure('state', foreground="#666")
-            self.text.tag_configure('attack', foreground='#c0392b', font=("Segoe UI", 8, 'bold'))
-            self.text.tag_configure('heal', foreground='#27ae60', font=("Segoe UI", 8, 'bold'))
-            self.text.tag_configure('crit', foreground='#8E44AD', font=("Segoe UI", 8, 'bold'))
-            self.text.tag_configure('miss', foreground='#95A5A6', font=("Segoe UI", 8, 'italic'))
-            self.text.tag_configure('block', foreground='#2C3E50', font=("Segoe UI", 8))
+            pal = tag_colors or {}
+            self.text.tag_configure('info', foreground=pal.get('info', '#222'))
+            self.text.tag_configure('success', foreground=pal.get('success', '#27ae60'))
+            self.text.tag_configure('warning', foreground=pal.get('warning', '#E67E22'))
+            self.text.tag_configure('error', foreground=pal.get('error', '#d9534f'), underline=True)
+            self.text.tag_configure('state', foreground=pal.get('state', "#666"))
+            self.text.tag_configure('attack', foreground=pal.get('attack', '#c0392b'), font=("Segoe UI", 8, 'bold'))
+            self.text.tag_configure('heal', foreground=pal.get('heal', '#27ae60'), font=("Segoe UI", 8, 'bold'))
+            self.text.tag_configure('crit', foreground=pal.get('crit', '#8E44AD'), font=("Segoe UI", 8, 'bold'))
+            self.text.tag_configure('miss', foreground=pal.get('miss', '#95A5A6'), font=("Segoe UI", 8, 'italic'))
+            self.text.tag_configure('block', foreground=pal.get('block', '#2C3E50'), font=("Segoe UI", 8))
         except Exception:
             pass
 

@@ -40,6 +40,8 @@ class AlliesView:
             self._subs.append((evt, subscribe_event(evt, self._on_proxy)))
         # equipment impacts ally stats and operations
         self._subs.append(('equipment_changed', subscribe_event('equipment_changed', self._on_equip_changed)))
+        # stamina micro updates
+        self._subs.append(('stamina_changed', subscribe_event('stamina_changed', self._on_stamina_changed)))
 
     def unmount(self):
         for evt, cb in (self._subs or []):
@@ -102,7 +104,12 @@ class AlliesView:
                         amt = max(0, int((payload or {}).get('amount', 0)))
                         if amt:
                             text = f"+{amt}" if kind == 'heal' else f"-{amt}"
-                            col = "#27ae60" if kind == 'heal' else "#c0392b"
+                            try:
+                                from src import settings as S
+                                cols = (S.anim_cfg() or {}).get('colors') or {}
+                                col = cols.get('heal', '#27ae60') if kind == 'heal' else cols.get('damage', '#c0392b')
+                            except Exception:
+                                col = "#27ae60" if kind == 'heal' else "#c0392b"
                             ANIM.float_text(self.app, wrap, text, color=col)
                     except Exception:
                         pass
@@ -144,26 +151,15 @@ class AlliesView:
                             def _slot_text(label, item):
                                 return (getattr(item, 'name', '-')) if item else f"{label}: -"
                             def _tip_text(item, label):
-                                if not item:
-                                    return f"{label}: 空槽"
-                                parts = []
                                 try:
-                                    av = int(getattr(item, 'attack', 0) or 0)
-                                    if av:
-                                        parts.append(f"+{av} 攻")
+                                    from .. import cards as tk_cards
+                                    return tk_cards.equipment_tooltip(item, label)
                                 except Exception:
-                                    pass
-                                try:
-                                    dv = int(getattr(item, 'defense', 0) or 0)
-                                    if dv:
-                                        parts.append(f"+{dv} 防")
-                                except Exception:
-                                    pass
-                                if getattr(item, 'is_two_handed', False):
-                                    parts.append('双手')
-                                head = getattr(item, 'name', '')
-                                tail = ' '.join(parts)
-                                return head + (("\n" + tail) if tail else '')
+                                    try:
+                                        nm = getattr(item, 'name', '-') if item else None
+                                        return f"{label}: {nm or '空槽'}"
+                                    except Exception:
+                                        return f"{label}: 空槽"
                             def _rebind_tip(btn, provider):
                                 try:
                                     btn.unbind('<Enter>'); btn.unbind('<Leave>'); btn.unbind('<Motion>')
@@ -198,6 +194,38 @@ class AlliesView:
                     ops.render(self.app.frm_operations)
             except Exception:
                 pass
+        except Exception:
+            pass
+
+    def _on_stamina_changed(self, _evt: str, payload: dict):
+        """体力变化：仅更新对应卡片的体力胶囊与标签。"""
+        try:
+            owner = (payload or {}).get('owner')
+            if not owner:
+                return
+            cur = int((payload or {}).get('stamina', getattr(owner, 'stamina', 0)))
+            mx = int((payload or {}).get('stamina_max', getattr(owner, 'stamina_max', cur or 1)))
+            for idx, wrap in (getattr(self.app, 'card_wraps', {}) or {}).items():
+                inner = next((ch for ch in wrap.winfo_children() if hasattr(ch, '_model_ref')), None)
+                if inner is None or getattr(inner, '_model_ref', None) is not owner:
+                    continue
+                try:
+                    caps = getattr(inner, '_st_caps', None)
+                    lbl = getattr(inner, '_st_lbl', None)
+                    col_on, col_off = getattr(inner, '_st_colors', ('#2ecc71','#e74c3c'))
+                    if isinstance(caps, list):
+                        for i, c in enumerate(caps):
+                            fill = col_on if i < cur else col_off
+                            try:
+                                c.delete('all')
+                                c.create_rectangle(2, 2, 6, 12, outline=fill, fill=fill)
+                            except Exception:
+                                pass
+                    if lbl:
+                        lbl.config(text=f"{cur}/{mx}")
+                except Exception:
+                    pass
+                break
         except Exception:
             pass
 
@@ -264,7 +292,15 @@ class AlliesView:
             start = 1 + (max_per_row - k) // 2
             for j, m in enumerate(row_members):
                 m_index = r_idx * max_per_row + j + 1
-                wrap = tk.Frame(row_f, highlightthickness=self.app._border_default, highlightbackground="#cccccc", width=self.app.CARD_W, height=self.app.CARD_H)
+                # 若启用体力展示，保证卡片最小高度，避免体力行被裁切
+                _h = self.app.CARD_H
+                try:
+                    stc = getattr(self.app, '_stamina_cfg', {}) or {}
+                    if stc.get('enabled', True):
+                        _h = max(int(_h), 140)
+                except Exception:
+                    pass
+                wrap = tk.Frame(row_f, highlightthickness=self.app._border_default, highlightbackground="#cccccc", width=self.app.CARD_W, height=_h)
                 try:
                     wrap.pack_propagate(False)
                 except Exception:

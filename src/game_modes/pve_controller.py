@@ -36,18 +36,10 @@ class SimplePvEController:
         self.MSG_INVALID_SECTION = "无效区域编号 (0-5)"
         self.MSG_HELP_TITLE = "=== 简单 PvE 指令帮助 ==="
         self.MSG_HELP = (
-            "s <编号> : 显示区域 (0=自己 1=敌人 2=资源 3=历史 4=背包 5=信息)\n"
-            "p <手牌序号> : 出牌\n"
-            "a <队伍序号|mN> e<敌人序号> : 攻击该敌人\n"
-            "take|t <rN|序号> : 拾取资源到背包\n"
-            "use|u <物品名> [mN] : 使用背包物品(可指定目标队伍成员)\n"
-            "equip|eq <物品名|iN> mN : 为指定队员装备(支持背包序号 iN)\n"
-            "unequip|uneq mN <left|right|armor> : 卸下队员装备到背包\n"
-            "moveeq mN <left|right|armor> mK : 将一名队员的装备直接转移给另一名队员\n"
-            "craft|c [list|<索引|名称>] : 合成（背包中会显示可合成，用 cN 快速合成）\n"
-            "back|b : 返回上一级场景(若当前场景定义了返回路径)\n"
-            "end : 结束回合\n"
-            "i|inv : 查看背包  | h : 帮助  | q : 退出"
+            "s 5 : 查看信息摘要  |  s 3 : 查看最近战斗日志\n"
+            "a <mN> e<N> : 用我方单位攻击指定敌人\n"
+            "skill <name> <mN> [targets...] : 释放技能（体力消耗见 UI 提示）\n"
+            "end : 结束回合  |  h : 帮助  |  q : 退出"
         )
         self._print_help(initial=True)
 
@@ -84,7 +76,12 @@ class SimplePvEController:
         if board:
             pairs: list[tuple[str, str]] = []
             for i, m in enumerate(board, 1):
-                status = C.dim('·已攻') if not getattr(m, 'can_attack', False) else C.dim('·可攻')
+                # 显示体力而非“可攻/已攻”
+                try:
+                    st = int(getattr(m, 'stamina', 0)); sm = int(getattr(m, 'stamina_max', st))
+                    status = C.dim(f'·体力 {st}/{sm}')
+                except Exception:
+                    status = C.dim('·体力 -')
                 # 计算数值：基础攻、装备攻、总攻、防御、生命
                 try:
                     base_atk = int(getattr(m, 'base_atk', getattr(m, 'atk', 0)))

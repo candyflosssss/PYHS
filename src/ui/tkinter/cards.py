@@ -7,6 +7,102 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Any
 from . import ui_utils as U
+from src import app_config as CFG
+from src import settings as S
+import json, os
+
+
+_SKILL_CATALOG_CACHE: dict[str, dict] | None = None
+
+
+def _skill_catalog() -> dict[str, dict]:
+    global _SKILL_CATALOG_CACHE
+    if _SKILL_CATALOG_CACHE is not None:
+        return _SKILL_CATALOG_CACHE
+    try:
+        p = CFG.skills_catalog_path()
+        with open(p, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        if isinstance(data, dict) and isinstance(data.get('skills'), list):
+            _SKILL_CATALOG_CACHE = { rec.get('id'): rec for rec in data['skills'] if isinstance(rec, dict) and rec.get('id') }
+        else:
+            _SKILL_CATALOG_CACHE = {}
+    except Exception:
+        _SKILL_CATALOG_CACHE = {}
+    return _SKILL_CATALOG_CACHE
+
+
+def equipment_tooltip(item, label: str) -> str:
+    if not item:
+        return f"{label}: 空槽"
+    lines: list[str] = []
+    name = getattr(item, 'name', '') or ''
+    lines.append(name)
+    # 描述
+    desc = getattr(item, 'description', None)
+    if desc:
+        lines.append(str(desc))
+    # 基础加成
+    parts = []
+    try:
+        av = int(getattr(item, 'attack', 0) or 0)
+        if av:
+            parts.append(f"+{av} 攻")
+    except Exception:
+        pass
+    try:
+        dv = int(getattr(item, 'defense', 0) or 0)
+        if dv:
+            parts.append(f"+{dv} 防")
+    except Exception:
+        pass
+    if getattr(item, 'is_two_handed', False):
+        parts.append('双手')
+    if parts:
+        lines.append('，'.join(parts))
+    # 主动技能
+    sks = list(getattr(item, 'active_skills', []) or [])
+    if sks:
+        cat = _skill_catalog()
+        lines.append('主动技能:')
+        for sid in sks:
+            rid = str(sid)
+            rec = cat.get(rid) or {}
+            nm = rec.get('name_cn') or rec.get('name_en') or rid
+            cost = 0
+            try:
+                cost = int(getattr(S, 'get_skill_cost')(rid, 1))
+            except Exception:
+                cost = 1
+            desc = rec.get('desc')
+            line = f"- {nm}（消耗体力 {cost}）"
+            if desc:
+                line += f"\n  {desc}"
+            lines.append(line)
+    # 被动
+    psv = getattr(item, 'passives', None) or {}
+    if isinstance(psv, dict) and psv:
+        stat_map = {'str':'力量','dex':'敏捷','con':'体质','int':'智力','wis':'智慧','cha':'魅力'}
+        lines.append('被动:')
+        for k, v in psv.items():
+            if k == 'lifesteal_on_attack_stat':
+                zh = stat_map.get(str(v).lower(), str(v))
+                lines.append(f"- 攻击命中后按{zh}调整值吸血")
+            elif k == 'heal_on_damaged_stat':
+                zh = stat_map.get(str(v).lower(), str(v))
+                lines.append(f"- 受伤后按{zh}调整值治疗自身")
+            elif k == 'reflect_on_damaged':
+                if str(v).startswith('stamina_cost_'):
+                    try:
+                        n = int(str(v).split('_')[-1])
+                    except Exception:
+                        n = 1
+                    lines.append(f"- 受伤后消耗{n}点体力进行反击")
+                else:
+                    lines.append("- 受伤后进行反击")
+            else:
+                lines.append(f"- {k}: {v}")
+    return "\n".join(lines)
 
 
 def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_enemy: bool = False) -> ttk.Frame:
@@ -50,7 +146,10 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
     frame.columnconfigure(0, weight=1)
 
     # name (top)
-    ttk.Label(frame, text=str(name), font=("Segoe UI", 10, "bold")).grid(row=0, column=0, sticky='n', pady=(0, 0))
+    top = ttk.Frame(frame)
+    top.grid(row=0, column=0, sticky='ew', pady=(0, 0))
+    top.columnconfigure(0, weight=1)
+    ttk.Label(top, text=str(name), font=("Segoe UI", 10, "bold")).grid(row=0, column=0, sticky='w')
 
     # stats: vertical stack (attack, hp, AC) — 更紧凑的行距与小字体
     stats = ttk.Frame(frame)
@@ -76,9 +175,17 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
     atk_var = tk.StringVar(value=f"ATK {total_atk}")
     hp_var = tk.StringVar(value=f"HP {cur_hp}/{max_hp}")
     ac_var = tk.StringVar(value=f"AC {ac_val}")
-    ttk.Label(stats, textvariable=atk_var, foreground="#E6B800", style="Tiny.TLabel").grid(row=0, column=0, sticky='w', padx=0, pady=(0, 0))
-    ttk.Label(stats, textvariable=hp_var, foreground="#27ae60" if cur_hp > 0 else "#c0392b", style="Tiny.TLabel").grid(row=1, column=0, sticky='w', padx=0, pady=(0, 0))
-    ttk.Label(stats, textvariable=ac_var, foreground="#2980b9", style="Tiny.TLabel").grid(row=2, column=0, sticky='w', padx=0, pady=(0, 0))
+    try:
+        cols = getattr(app, '_stats_colors', {}) or {}
+        col_atk = cols.get('atk', '#E6B800')
+        col_hp_pos = cols.get('hp_pos', '#27ae60')
+        col_hp_zero = cols.get('hp_zero', '#c0392b')
+        col_ac = cols.get('ac', '#2980b9')
+    except Exception:
+        col_atk, col_hp_pos, col_hp_zero, col_ac = "#E6B800", "#27ae60", "#c0392b", "#2980b9"
+    ttk.Label(stats, textvariable=atk_var, foreground=col_atk, style="Tiny.TLabel").grid(row=0, column=0, sticky='w', padx=0, pady=(0, 0))
+    ttk.Label(stats, textvariable=hp_var, foreground=(col_hp_pos if cur_hp > 0 else col_hp_zero), style="Tiny.TLabel").grid(row=1, column=0, sticky='w', padx=0, pady=(0, 0))
+    ttk.Label(stats, textvariable=ac_var, foreground=col_ac, style="Tiny.TLabel").grid(row=2, column=0, sticky='w', padx=0, pady=(0, 0))
 
     # 角色卡右侧装备槽：敌方显示为禁用态（可见信息不可操作），我方可操作
     eq = getattr(m, 'equipment', None)
@@ -99,24 +206,7 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
         return f"{label}: -"
 
     def tip_text_for(item, label):
-        if not item:
-            return f"{label}: 空槽"
-        parts = []
-        try:
-            if getattr(item, 'attack', 0):
-                parts.append(f"+{getattr(item, 'attack', 0)} 攻")
-        except Exception:
-            pass
-        try:
-            if getattr(item, 'defense', 0):
-                parts.append(f"+{getattr(item, 'defense', 0)} 防")
-        except Exception:
-            pass
-        if getattr(item, 'is_two_handed', False):
-            parts.append('双手')
-        head = getattr(item, 'name', '')
-        tail = ' '.join(parts)
-        return head + ("\n" + tail if tail else '')
+        return equipment_tooltip(item, label)
 
     def make_btn(r, label, item, slot_key):
         text = slot_text(label, item)
@@ -133,6 +223,35 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
     btn_l = make_btn(0, '左手', left_item, 'left')
     btn_a = make_btn(1, '盔甲', armor_item, 'armor')
     btn_r = make_btn(2, '右手', right_item, 'right')
+
+    # stamina row: now placed below equipment area (new row 2 spanning both columns)
+    try:
+        st_cfg = getattr(app, '_stamina_cfg', {}) or {}
+        if st_cfg.get('enabled', True):
+            st_row = ttk.Frame(frame)
+            st_row.grid(row=2, column=0, columnspan=2, sticky='ew', pady=(2, 0))
+            st_row.columnconfigure(0, weight=1)
+            caps = []
+            max_caps = max(1, int(st_cfg.get('max_caps', 6)))
+            col_on = ((st_cfg.get('colors') or {}).get('on') or '#2ecc71')
+            col_off = ((st_cfg.get('colors') or {}).get('off') or '#e74c3c')
+            cur = int(getattr(m, 'stamina', 0)); mx = int(getattr(m, 'stamina_max', cur or 1))
+            show_n = min(mx, max_caps)
+            cap_wrap = ttk.Frame(st_row)
+            cap_wrap.grid(row=0, column=0, sticky='e')
+            for i in range(show_n):
+                c = tk.Canvas(cap_wrap, width=8, height=14, highlightthickness=0, bg=frame.cget('background'))
+                fill = col_on if i < cur else col_off
+                c.create_rectangle(2, 2, 6, 12, outline=fill, fill=fill)
+                c.pack(side=tk.LEFT, padx=1)
+                caps.append(c)
+            lbl = ttk.Label(cap_wrap, text=f"{cur}/{mx}", style="Tiny.TLabel")
+            lbl.pack(side=tk.LEFT, padx=(4,0))
+            frame._st_caps = caps
+            frame._st_lbl = lbl
+            frame._st_colors = (col_on, col_off)
+    except Exception:
+        pass
 
     def card_tip():
         # Provide tooltip matching the semantics of the "s 5" command output when possible.

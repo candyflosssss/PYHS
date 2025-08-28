@@ -28,6 +28,8 @@ from src.ui.targeting.fsm import TargetingEngine
 from .controllers.selection_controller import SelectionController
 # Inline 选择：不使用弹窗选择器
 from src.core.events import subscribe as subscribe_event, unsubscribe as unsubscribe_event
+# --- new: runtime settings ---
+from src import settings as S
 
 try:
 	from main import load_config, save_config, discover_packs, _pick_default_main  # type: ignore
@@ -112,6 +114,19 @@ class GameTkApp:
 			'sel_ally_border':   '#1E90FF',
 			'sel_ally_bg':       '#D6EBFF',
 		}
+		# 应用运行期可配置项（主题/尺寸/边框/高亮/动画开关/日志颜色等）
+		try:
+			S.apply_console_theme()
+			S.apply_to_tk_app(self)
+		except Exception:
+			pass
+
+		# 启动事件驱动的被动系统（幂等）
+		try:
+			from src.systems import passives_system as PS
+			PS.setup()
+		except Exception:
+			pass
 
 		# Containers
 		self.frame_menu = ttk.Frame(self.root)
@@ -286,7 +301,8 @@ class GameTkApp:
 				# 容错：若失败则静默
 				pass
 		try:
-			self.root.after(250, _do_full)
+			delay_ms = int(getattr(self, '_scene_switch_delay_ms', 250))
+			self.root.after(delay_ms, _do_full)
 		except Exception:
 			_do_full()
 
@@ -424,16 +440,19 @@ class GameTkApp:
 		self.scene_var = tk.StringVar(value="场景: -")
 		top = ttk.Frame(parent)
 		top.pack(fill=tk.X, padx=6, pady=(6, 2))
-		# 更紧凑的默认样式
+		# 样式在 settings.apply_to_tk_app 中统一配置；此处仅兜底
 		try:
-			self.style = ttk.Style(self.root)
-			self.style.configure("Tiny.TButton", font=("Segoe UI", 8), padding=(4, 2))
-			self.style.configure("Tiny.TLabel", font=("Segoe UI", 8))
-			self.style.configure("TinyBold.TLabel", font=("Segoe UI", 9, "bold"))
-			# 更紧凑的卡片槽按钮样式
-			self.style.configure("Slot.TButton", font=("Segoe UI", 8), padding=(0, 0))
+			from src import settings as S
+			S.apply_to_tk_app(self)
 		except Exception:
-			self.style = None
+			try:
+				self.style = ttk.Style(self.root)
+				self.style.configure("Tiny.TButton", font=("Segoe UI", 8), padding=(4, 2))
+				self.style.configure("Tiny.TLabel", font=("Segoe UI", 8))
+				self.style.configure("TinyBold.TLabel", font=("Segoe UI", 9, "bold"))
+				self.style.configure("Slot.TButton", font=("Segoe UI", 8), padding=(0, 0))
+			except Exception:
+				self.style = None
 		ttk.Label(top, textvariable=self.scene_var, font=("Segoe UI", 10, "bold")).pack(side=tk.LEFT)
 		ttk.Button(top, text="主菜单", command=self._back_to_menu, style="Tiny.TButton").pack(side=tk.RIGHT)
 
@@ -526,7 +545,7 @@ class GameTkApp:
 		bottom.grid(row=4, column=0, columnspan=2, sticky='nsew')
 		bottom.columnconfigure(0, weight=1)
 		# 使用封装的日志面板
-		self.log_pane = LogPane(bottom)
+		self.log_pane = LogPane(bottom, tag_colors=getattr(self, '_log_tag_colors', None))
 		self.log_pane.frame.grid(row=0, column=0, sticky='nsew', padx=(0, 0), pady=(3, 3))
 		self.log_pane.bind_hover_tooltip()
 		# 兼容旧引用
@@ -835,16 +854,17 @@ class GameTkApp:
 			_logpath = _os.path.join(_logdir, 'game.log')
 			with open(_logpath, 'a', encoding='utf-8') as f:
 				for line in resp or []:
-					# support structured log dicts
+					# 仅持久化到文件，不在 Tk 面板逐行显示
 					if isinstance(line, dict):
-						disp = line.get('text', '')
-						self._append_info(disp)
-						self._append_log(line)
 						f.write(json.dumps(line, ensure_ascii=False) + "\n")
 					else:
-						self._append_info(line)
-						self._append_log(line)
 						f.write(str(line) + "\n")
+			# UI 信息区只刷新 s5/s3 简报
+			try:
+				self._append_log({'type': 'state', 'text': self.controller._section_info(), 'meta': {'section': 's5', 'state': True}})
+				self._append_log({'type': 'state', 'text': self.controller._section_history(), 'meta': {'section': 's3', 'state': True}})
+			except Exception:
+				pass
 		except Exception as e:
 			self._log_exception(e, '_pick_resource_log')
 		# 局部刷新：资源按钮与背包列表（委托 ResourcesView）
@@ -885,15 +905,7 @@ class GameTkApp:
 				lines = [str(out_lines)]
 		except Exception:
 			lines = []
-		# 统一：将“状态快照”作为 state 行追加到战斗日志
-		try:
-			for line in lines:
-				if isinstance(line, dict):
-					self._append_log({'type': 'state', 'text': line.get('text', ''), 'meta': {'state': True}})
-				else:
-					self._append_log({'type': 'state', 'text': str(line), 'meta': {'state': True}})
-		except Exception as e:
-			self._log_exception(e, '_after_cmd_info')
+		# Tk 信息区不再逐行回显命令输出；改为统一展示 s5/s3
 		# append to persistent log file (cross-platform) and log widget
 		try:
 			logdir = CFG.log_dir()
@@ -901,10 +913,7 @@ class GameTkApp:
 			logpath = os.path.join(logdir, 'game.log')
 			with open(logpath, 'a', encoding='utf-8') as f:
 				for line in lines:
-					try:
-						self._append_log(line)
-					except Exception:
-						pass
+					# 仅写入文件，避免 UI 重复噪音
 					# write structured logs as JSON for better persistence
 					try:
 						if isinstance(line, dict):
@@ -916,11 +925,10 @@ class GameTkApp:
 							f.write(str(line) + "\n")
 						except Exception:
 							pass
-				# consume game structured logs (e.g., DND to_hit/damage) and render to both panes
+				# consume game structured logs (e.g., DND to_hit/damage) -> only persist to file
 				try:
 					logs = self.controller.game.pop_logs()
 					for L in logs:
-						self._append_log(L)
 						try:
 							f.write(json.dumps(L, ensure_ascii=False) + "\n")
 						except Exception:
@@ -929,6 +937,12 @@ class GameTkApp:
 					pass
 		except Exception as e:
 			self._log_exception(e, '_after_cmd_log')
+		# 仅在 UI 信息区输出 s5/s3 简报
+		try:
+			self._append_log({'type': 'state', 'text': self.controller._section_info(), 'meta': {'section': 's5', 'state': True}})
+			self._append_log({'type': 'state', 'text': self.controller._section_history(), 'meta': {'section': 's3', 'state': True}})
+		except Exception as e:
+			self._log_exception(e, '_after_cmd_sections')
 		# 保证恢复默认高亮
 		try:
 			self._reset_highlights()
@@ -971,11 +985,10 @@ class GameTkApp:
 			self._bind_views_context()
 		except Exception:
 			pass
-		# 输出初始状态快照到战斗日志（替代历史的 text_info 面板）
+		# 启动时：仅输出 s5/s3 简报到信息区
 		try:
-			full = self.controller._render_full_view()
-			for line in (full or '').splitlines():
-				self._append_log({'type': 'state', 'text': line, 'meta': {'state': True}})
+			self._append_log({'type': 'state', 'text': self.controller._section_info(), 'meta': {'section': 's5', 'state': True}})
+			self._append_log({'type': 'state', 'text': self.controller._section_history(), 'meta': {'section': 's3', 'state': True}})
 		except Exception:
 			pass
 		self.refresh_all(skip_info_log=True)
@@ -1096,13 +1109,17 @@ class GameTkApp:
 			lbl = ttk.Label(frm, text="正在切换场景…", font=("Segoe UI", 14, "bold"))
 			lbl.place(relx=0.5, rely=0.5, anchor='center')
 			setattr(self, '_scene_overlay', ov)
-			def fade_in(a=0.0):
+			# 使用可配置的淡入参数
+			interval = int(getattr(self, '_overlay_fade_interval', 16))
+			step = float(getattr(self, '_overlay_fade_step', 0.1))
+			target = float(getattr(self, '_overlay_target_alpha', 0.8))
+			def fade_in(a: float = 0.0):
 				try:
-					if a >= 0.8:
-						ov.attributes('-alpha', 0.8)
+					if a >= target:
+						ov.attributes('-alpha', target)
 						return
 					ov.attributes('-alpha', a)
-					self.root.after(16, lambda: fade_in(a + 0.1))
+					self.root.after(interval, lambda: fade_in(a + step))
 				except Exception:
 					pass
 			fade_in()

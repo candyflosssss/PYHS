@@ -36,6 +36,14 @@ class Combatant:
             # 同时设置 display_name 与 name，兼容旧代码访问 .name
             setattr(self, 'display_name', n)
             setattr(self, 'name', n)
+        # 体力系统：由 settings.rules.stamina.base 控制回合上限
+        try:
+            from src import settings as S
+            base = int(getattr(S, 'stamina_base')())
+        except Exception:
+            base = 3
+        self.stamina_max = int(base)
+        self.stamina = int(base)
 
     def add_tag(self, tag: str):
         try:
@@ -70,3 +78,26 @@ class Combatant:
 
     def heal(self, amount: int):
         self.hp = min(self.hp + int(amount), self.max_hp)
+
+    # --- stamina helpers ---
+    def refill_stamina(self):
+        """回合开始回满体力。"""
+        self.stamina = int(self.stamina_max)
+        try:
+            from src.core.events import publish as publish_event
+            publish_event('stamina_changed', {'owner': self, 'stamina': self.stamina, 'stamina_max': self.stamina_max, 'reason': 'refill'})
+        except Exception:
+            pass
+
+    def spend_stamina(self, amount: int) -> bool:
+        """尝试消耗体力；不足则返回 False。"""
+        a = max(0, int(amount))
+        if self.stamina < a:
+            return False
+        self.stamina -= a
+        try:
+            from src.core.events import publish as publish_event
+            publish_event('stamina_changed', {'owner': self, 'stamina': self.stamina, 'stamina_max': self.stamina_max, 'reason': 'spend', 'amount': a})
+        except Exception:
+            pass
+        return True

@@ -7,6 +7,10 @@ import re
 import tkinter as tk
 from tkinter import ttk
 from typing import Callable
+try:
+    from src import settings as S
+except Exception:
+    S = None  # type: ignore
 
 _ansi_escape = re.compile(r'\x1B\[[0-?]*[ -/]*[@-~]')
 _r_prefix = re.compile(r'^[rR]\s*\d+\s*[·:\-\s]*')
@@ -66,11 +70,23 @@ def attach_tooltip_deep(root_widget: tk.Widget, text_provider: Callable[[], str]
                         return
                     # 继续下一次巡检
                     try:
-                        root_widget.after(120, tick)
+                        ms = 120
+                        try:
+                            if S is not None:
+                                ms = int(((S.tk_cfg() or {}).get('tooltip') or {}).get('tick_ms', 120))
+                        except Exception:
+                            ms = 120
+                        root_widget.after(ms, tick)
                     except Exception:
                         pass
                 try:
-                    root_widget.after(120, tick)
+                    ms0 = 120
+                    try:
+                        if S is not None:
+                            ms0 = int(((S.tk_cfg() or {}).get('tooltip') or {}).get('tick_ms', 120))
+                    except Exception:
+                        ms0 = 120
+                    root_widget.after(ms0, tick)
                 except Exception:
                     pass
         except Exception:

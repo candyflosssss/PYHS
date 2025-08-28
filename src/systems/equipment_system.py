@@ -3,13 +3,21 @@ from src.core.events import publish as publish_event
 from src.ui import colors as C
 
 class WeaponItem(EquipmentItem):
-    """武器装备"""
-    def __init__(self, name, description="", durability=100, attack=0, slot_type="right_hand", is_two_handed=False):
+    """武器装备
+
+    可选：
+    - active_skills: [skill_id,...] 装备后可用的主动技能（会出现在操作栏）
+    - passives: dict 被动效果声明（示例：{'lifesteal_on_attack_stat': 'str'}）
+    """
+    def __init__(self, name, description="", durability=100, attack=0, slot_type="right_hand", is_two_handed=False,
+                 active_skills=None, passives=None):
         super().__init__(name, description, durability)
         self.attack = attack
         self.defense = 0
         self.slot_type = slot_type
         self.is_two_handed = is_two_handed
+        self.active_skills = list(active_skills or [])
+        self.passives = dict(passives or {})
     
     def __str__(self):
         if self.is_two_handed:
@@ -17,25 +25,35 @@ class WeaponItem(EquipmentItem):
         return C.resource(f"{self.name}(武器 +{self.attack}攻)")
 
 class ArmorItem(EquipmentItem):
-    """防具装备"""
-    def __init__(self, name, description: str = "", durability: int = 100, defense: int = 0, slot_type: str = "armor"):
+    """防具装备
+
+    可选：active_skills/passives，示例被动：
+    - {'heal_on_damaged_stat': 'wis'}    受伤时按 WIS 调整值治疗
+    - {'reflect_on_damaged': 'stamina_cost_1'}   受伤时若有体力则消耗1并反伤
+    """
+    def __init__(self, name, description: str = "", durability: int = 100, defense: int = 0, slot_type: str = "armor",
+                 active_skills=None, passives=None):
         super().__init__(name, description, durability)
         self.attack = 0
         self.defense = defense
         self.slot_type = slot_type
         self.is_two_handed = False
+        self.active_skills = list(active_skills or [])
+        self.passives = dict(passives or {})
 
     def __str__(self):
         return C.resource(f"{self.name}(防具 +{self.defense}防)")
 
 class ShieldItem(EquipmentItem):
-    """盾牌装备"""
-    def __init__(self, name, description="", durability=100, defense=0, attack=0):
+    """盾牌装备（左手）"""
+    def __init__(self, name, description="", durability=100, defense=0, attack=0, active_skills=None, passives=None):
         super().__init__(name, description, durability)
         self.attack = attack
         self.defense = defense
         self.slot_type = "left_hand"
         self.is_two_handed = False
+        self.active_skills = list(active_skills or [])
+        self.passives = dict(passives or {})
     
     def __str__(self):
         if self.attack > 0:
@@ -205,14 +223,17 @@ class EquipmentSystem:
 
 # 创建一些测试装备
 def create_sample_equipment():
-    """创建示例装备"""
+    """创建示例装备（含主动/被动示例）"""
     return {
         "wooden_sword": WeaponItem("木剑", "简单的木制武器", 50, attack=2),
         "iron_shield": ShieldItem("铁盾", "坚固的铁制盾牌", 80, defense=3),
         "leather_armor": ArmorItem("皮甲", "轻便的皮革护甲", 60, defense=2),
         "great_sword": WeaponItem("巨剑", "需要双手持握的大剑", 100, attack=5, slot_type="left_hand", is_two_handed=True),
-        "steel_sword": WeaponItem("钢剑", "锋利的钢制长剑", 90, attack=4),
-        "magic_shield": ShieldItem("魔法盾", "带有魔法增幅的盾牌", 120, defense=4, attack=1)
+        "steel_sword": WeaponItem("钢剑", "锋利的钢制长剑", 90, attack=4, active_skills=["precise_strike"]),
+        "magic_shield": ShieldItem("魔法盾", "带有魔法增幅的盾牌", 120, defense=4, attack=1),
+        "嗜血之剑": WeaponItem("嗜血之剑", "攻击时按力量调整值恢复生命", 100, attack=3, passives={"lifesteal_on_attack_stat": "str"}),
+        "生命铠甲": ArmorItem("生命铠甲", "受伤时按智慧调整值恢复生命", 100, defense=3, passives={"heal_on_damaged_stat": "wis"}),
+        "诅咒之铠": ArmorItem("诅咒之铠", "受伤时可消耗体力反伤", 100, defense=2, passives={"reflect_on_damaged": "stamina_cost_1"}),
     }
 
 

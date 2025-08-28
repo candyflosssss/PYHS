@@ -1,5 +1,7 @@
 {
   "name": "玩家",
   "last_pack": "test",
-  "last_scene": "main.json"
+  "last_scene": "main.json",
+  "ui.tk.stamina.enabled": true,
+  "ui.tk.card.height": 110
 }

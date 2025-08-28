@@ -73,7 +73,12 @@ class EnemiesView:
                         ANIM.on_hit(self.app, wrap, kind='damage')
                         amt = max(0, int((payload or {}).get('amount', 0)))
                         if amt:
-                            ANIM.float_text(self.app, wrap, f"-{amt}", color="#c0392b")
+                            try:
+                                from src import settings as S
+                                col = ((S.anim_cfg() or {}).get('colors') or {}).get('damage', '#c0392b')
+                            except Exception:
+                                col = '#c0392b'
+                            ANIM.float_text(self.app, wrap, f"-{amt}", color=col)
                     except Exception:
                         pass
                     def _remove_idx():
@@ -100,7 +105,12 @@ class EnemiesView:
                         ANIM.on_hit(self.app, wrap, kind='damage')
                         amt = max(0, int((payload or {}).get('amount', 0)))
                         if amt:
-                            ANIM.float_text(self.app, wrap, f"-{amt}", color="#c0392b")
+                            try:
+                                from src import settings as S
+                                col = ((S.anim_cfg() or {}).get('colors') or {}).get('damage', '#c0392b')
+                            except Exception:
+                                col = '#c0392b'
+                            ANIM.float_text(self.app, wrap, f"-{amt}", color=col)
                     except Exception:
                         pass
                 found = True
@@ -177,7 +187,15 @@ class EnemiesView:
             start = 1 + (max_per_row - k) // 2
             for j, e in enumerate(row_members):
                 e_index = r_idx * max_per_row + j + 1
-                wrap = tk.Frame(row_f, highlightthickness=self.app._border_default, highlightbackground="#cccccc", width=self.app.CARD_W, height=self.app.CARD_H)
+                # 敌方卡片也可能显示体力，为避免裁切提高最小高度
+                _h = self.app.CARD_H
+                try:
+                    stc = getattr(self.app, '_stamina_cfg', {}) or {}
+                    if stc.get('enabled', True):
+                        _h = max(int(_h), 140)
+                except Exception:
+                    pass
+                wrap = tk.Frame(row_f, highlightthickness=self.app._border_default, highlightbackground="#cccccc", width=self.app.CARD_W, height=_h)
                 try:
                     wrap.pack_propagate(False)
                 except Exception:

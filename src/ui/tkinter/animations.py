@@ -6,6 +6,10 @@ from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
 from typing import Callable, Optional
+try:
+    from src import settings as S
+except Exception:
+    S = None  # type: ignore
 
 
 def _hex_to_rgb(h: str) -> tuple[int, int, int]:
@@ -116,6 +120,13 @@ def flash_border(wrap: tk.Frame, color: str, base: Optional[str] = None, repeats
     """Flash the wrap's highlight border color briefly."""
     _cancel_anim(wrap)
     try:
+        if S is not None:
+            cfg = (S.anim_cfg() or {}).get('flash') or {}
+            repeats = int(cfg.get('repeats', repeats))
+            interval = int(cfg.get('interval_ms', interval))
+    except Exception:
+        pass
+    try:
         base = base or wrap.cget('highlightbackground') or '#cccccc'
     except Exception:
         base = '#cccccc'
@@ -142,6 +153,14 @@ def flash_border(wrap: tk.Frame, color: str, base: Optional[str] = None, repeats
 def shake(wrap: tk.Frame, amplitude: int = 3, cycles: int = 8, interval: int = 22):
     """Small horizontal shake by tweaking padx. Keep subtle to avoid layout jump."""
     _cancel_anim(wrap)
+    try:
+        if S is not None:
+            cfg = (S.anim_cfg() or {}).get('shake') or {}
+            amplitude = int(cfg.get('amplitude', amplitude))
+            cycles = int(cfg.get('cycles', cycles))
+            interval = int(cfg.get('interval_ms', interval))
+    except Exception:
+        pass
     base_px = _get_padx(wrap)
     seq = []
     for i in range(cycles):
@@ -164,6 +183,13 @@ def shake(wrap: tk.Frame, amplitude: int = 3, cycles: int = 8, interval: int = 2
 def fade_out_and_remove(wrap: tk.Frame, *, to_color: str = '#ffffff', steps: int = 14, interval: int = 55, on_done: Optional[Callable[[], None]] = None):
     """Fade the wrap bg towards to_color, then destroy and call on_done."""
     _cancel_anim(wrap)
+    try:
+        if S is not None:
+            cfg = (S.anim_cfg() or {}).get('fade_out') or {}
+            steps = int(cfg.get('steps', steps))
+            interval = int(cfg.get('interval_ms', interval))
+    except Exception:
+        pass
     try:
         start = wrap.cget('background') or '#ffffff'
     except Exception:
@@ -198,19 +224,38 @@ def on_hit(app, wrap: tk.Frame, kind: str = 'damage'):
     """Composite animation for hit feedback: flash + subtle shake.
     kind: 'damage' | 'heal'
     """
+    # respect global toggle
+    try:
+        if S is not None and not bool((S.anim_cfg() or {}).get('enabled', True)):
+            return
+    except Exception:
+        pass
     try:
         if kind == 'heal':
-            color = '#27ae60'  # green
+            color = ((S.anim_cfg() or {}).get('colors') or {}).get('heal', '#27ae60') if S is not None else '#27ae60'
         else:
-            color = app.HL.get('sel_enemy_border', '#FF4D4F') if getattr(wrap, '_is_enemy', False) else '#c0392b'
+            color = app.HL.get('sel_enemy_border', '#FF4D4F') if getattr(wrap, '_is_enemy', False) else ((S.anim_cfg() or {}).get('colors') or {}).get('damage', '#c0392b') if S is not None else '#c0392b'
     except Exception:
         color = '#c0392b'
     try:
         # 稍微增强可见度：多一次闪烁
-        flash_border(wrap, color, repeats=3, interval=110)
+        try:
+            cfg = (S.anim_cfg() or {}).get('flash') or {}
+            rep = int(cfg.get('repeats', 3))
+            inter = int(cfg.get('interval_ms', 110))
+        except Exception:
+            rep, inter = 3, 110
+        flash_border(wrap, color, repeats=rep, interval=inter)
         # 如果未禁用，可轻微抖动；默认由 app._no_shake 控制
         if not getattr(app, '_no_shake', False):
-            shake(wrap, amplitude=3, cycles=8, interval=18)
+            try:
+                cfg = (S.anim_cfg() or {}).get('shake') or {}
+                amp = int(cfg.get('amplitude', 3))
+                cyc = int(cfg.get('cycles', 8))
+                inter = int(cfg.get('interval_ms', 18))
+            except Exception:
+                amp, cyc, inter = 3, 8, 18
+            shake(wrap, amplitude=amp, cycles=cyc, interval=inter)
     except Exception:
         pass
 
@@ -219,7 +264,13 @@ def on_death(app, wrap: tk.Frame, *, on_removed: Optional[Callable[[], None]] = 
     """Death feedback: clearer sequence and slower fade: flash -> small delay -> fade -> remove."""
     # 更明显的边框闪烁
     try:
-        flash_border(wrap, app.HL.get('sel_enemy_border', '#FF4D4F'), repeats=3, interval=120)
+        try:
+            cfg = (S.anim_cfg() or {}).get('flash') or {}
+            rep = int(cfg.get('repeats', 3))
+            inter = int(cfg.get('interval_ms', 120))
+        except Exception:
+            rep, inter = 3, 120
+        flash_border(wrap, app.HL.get('sel_enemy_border', '#FF4D4F'), repeats=rep, interval=inter)
     except Exception:
         pass
     # 闪烁后稍等再开始淡出，保证“先播动画再消失”的观感（总时长 ~1.2s）
@@ -228,8 +279,8 @@ def on_death(app, wrap: tk.Frame, *, on_removed: Optional[Callable[[], None]] = 
             fade_out_and_remove(
                 wrap,
                 to_color=getattr(app, '_wrap_bg_default', '#ffffff'),
-                steps=16,
-                interval=45,
+                steps=int(((S.anim_cfg() or {}).get('fade_out') or {}).get('steps', 16)) if S is not None else 16,
+                interval=int(((S.anim_cfg() or {}).get('fade_out') or {}).get('interval_ms', 45)) if S is not None else 45,
                 on_done=on_removed,
             )
         except Exception:
@@ -244,7 +295,11 @@ def on_death(app, wrap: tk.Frame, *, on_removed: Optional[Callable[[], None]] = 
                 except Exception:
                     pass
     try:
-        wrap.after(200, _start_fade)
+        try:
+            delay = int(((S.anim_cfg() or {}).get('fade_out') or {}).get('delay_before_ms', 200)) if S is not None else 200
+        except Exception:
+            delay = 200
+        wrap.after(delay, _start_fade)
     except Exception:
         _start_fade()
 
@@ -293,7 +348,18 @@ def float_text(app, wrap: tk.Frame, text: str, *, color: str = '#c0392b', dy: in
                 bg = parent.cget('background') or getattr(app, '_wrap_bg_default', '#ffffff')
             except Exception:
                 bg = getattr(app, '_wrap_bg_default', '#ffffff')
-        font_big = ("Segoe UI", 27, "bold")  # 3x 放大
+        try:
+            if S is not None:
+                cfg = (S.anim_cfg() or {}).get('float_text') or {}
+                dy = int(cfg.get('dy', dy))
+                steps = int(cfg.get('steps', steps))
+                interval = int(cfg.get('interval_ms', interval))
+                fs = int(cfg.get('font_size', 27))
+            else:
+                fs = 27
+        except Exception:
+            fs = 27
+        font_big = ("Segoe UI", fs, "bold")  # 3x 放大
         y0 = 4
         # 阴影层（在下）
         shadow = tk.Label(

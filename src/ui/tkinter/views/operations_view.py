@@ -57,6 +57,8 @@ class OperationsView:
         for evt in ('resource_added','resource_removed','resources_cleared','resources_reset','resources_changed'):
             self._subs.append((evt, subscribe_event(evt, self._on_any)))
         self._subs.append(('equipment_changed', subscribe_event('equipment_changed', self._on_any)))
+        # 体力变化会影响按钮可用性
+        self._subs.append(('stamina_changed', subscribe_event('stamina_changed', self._on_any)))
 
     def unmount(self):
         for evt, cb in (self._subs or []):
@@ -89,13 +91,34 @@ class OperationsView:
             return
         ops = ttk.Frame(container)
         ops.grid(row=0, column=0, sticky='w', padx=6, pady=6)
-        # 攻击
-        ttk.Button(ops, text="攻击", command=lambda: getattr(self.app, 'selection', self.app).begin_skill(sel, 'attack'), style="Tiny.TButton").pack(side=tk.LEFT, padx=4)
+        # 攻击（根据体力禁用；tooltip 显示体力消耗）
+        atk_btn = ttk.Button(ops, text="攻击", command=lambda: getattr(self.app, 'selection', self.app).begin_skill(sel, 'attack'), style="Tiny.TButton")
+        try:
+            board = self.app.controller.game.player.board
+            m = board[sel - 1]
+            from src import settings as S
+            atk_cost = int(getattr(S, 'get_skill_cost')('attack', 1))
+            if int(getattr(m, 'stamina', 0)) < atk_cost:
+                atk_btn.config(state=tk.DISABLED)
+            U.attach_tooltip_deep(atk_btn, lambda c=atk_cost: f"需要体力 {c}")
+        except Exception:
+            pass
+        atk_btn.pack(side=tk.LEFT, padx=4)
         # 角色技能
         try:
             board = self.app.controller.game.player.board
             m = board[sel - 1]
             skills = list(getattr(m, 'skills', []) or [])
+            # 装备授予的主动技能（左手/右手/盔甲）
+            try:
+                eq = getattr(m, 'equipment', None)
+                for it in (getattr(eq, 'left_hand', None), getattr(eq, 'right_hand', None), getattr(eq, 'armor', None)):
+                    if it and getattr(it, 'active_skills', None):
+                        for sid in it.active_skills:
+                            if sid and sid not in skills:
+                                skills.append(sid)
+            except Exception:
+                pass
             if not skills:
                 prof = getattr(m, 'profession', None)
                 if not prof:
@@ -147,14 +170,24 @@ class OperationsView:
                     def _run():
                         getattr(self.app, 'selection', self.app).begin_skill(sel, (_sid0 or name0))
                     return _run
-                b = ttk.Button(ops, text=text, command=_make_cmd(), style="Tiny.TButton")
-                b.pack(side=tk.LEFT, padx=2)
+                # cost & enable state
+                cost = 1
                 try:
+                    from src import settings as S
+                    cost = int(getattr(S, 'get_skill_cost')(sid or text, 1))
+                except Exception:
+                    pass
+                b = ttk.Button(ops, text=f"{text}", command=_make_cmd(), style="Tiny.TButton")
+                try:
+                    if int(getattr(m, 'stamina', 0)) < cost:
+                        b.config(state=tk.DISABLED)
+                    U.attach_tooltip_deep(b, lambda c=cost, base=(rec or {}).get('desc') if rec else None: (f"需要体力 {c}\n" + base) if base else f"需要体力 {c}")
+                except Exception:
+                    # 原有描述提示
                     desc = (rec or {}).get('desc') if rec else None
                     if desc:
                         U.attach_tooltip_deep(b, lambda d=desc: d)
-                except Exception:
-                    pass
+                b.pack(side=tk.LEFT, padx=2)
 
         # 目标会话内联区域
         te = getattr(self.app, 'target_engine', None)
