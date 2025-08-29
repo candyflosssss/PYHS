@@ -278,8 +278,19 @@ class GameTkApp:
 			self.selection.clear_all()
 		except Exception:
 			pass
+		# 立即隐藏操作弹窗等顶层 UI，确保切场景时界面被清空
+		try:
+			ops = (getattr(self, 'views', {}) or {}).get('ops')
+			if ops and hasattr(ops, 'hide_popup'):
+				ops.hide_popup(force=True)
+		except Exception:
+			pass
 		# 杀掉所有子 UI（容器内容与订阅），播放切换动画占位
 		try:
+			# 在展示过渡层前确保操作弹窗已隐藏，避免闪烁
+			ops = (getattr(self, 'views', {}) or {}).get('ops')
+			if ops and hasattr(ops, 'hide_popup'):
+				ops.hide_popup(force=True)
 			self._show_scene_transition()
 			self._teardown_children()
 		except Exception:
@@ -456,11 +467,35 @@ class GameTkApp:
 		ttk.Label(top, textvariable=self.scene_var, font=("Segoe UI", 10, "bold")).pack(side=tk.LEFT)
 		ttk.Button(top, text="主菜单", command=self._back_to_menu, style="Tiny.TButton").pack(side=tk.RIGHT)
 
-		# 顶部：敌人卡片
-		frm_enemy_cards = ttk.LabelFrame(parent, text="敌人 (点击选择 eN)")
-		frm_enemy_cards.pack(fill=tk.X, expand=False, padx=6, pady=(2, 2))
-		self.enemy_cards_container = ttk.Frame(frm_enemy_cards)
-		self.enemy_cards_container.pack(fill=tk.X, expand=False, padx=4, pady=4)
+		# 顶部：战场区（左：伙伴 右：敌人）——固定 3x5 网格的容器，大色框区分敌我
+		arena = ttk.Frame(parent)
+		arena.pack(fill=tk.X, expand=False, padx=6, pady=(2, 2))
+		arena.columnconfigure(0, weight=1, uniform='arena')
+		arena.columnconfigure(1, weight=1, uniform='arena')
+		# 伙伴区（左上）：蓝色外框
+		ally_border = tk.Frame(
+			arena,
+			highlightthickness=int(getattr(self, 'ARENA_BORDER_THICKNESS', 4)),
+			highlightbackground=getattr(self, 'ALLY_BORDER', '#4A90E2')
+		)
+		ally_border.grid(row=0, column=0, sticky='nsew', padx=(0, 3))
+		ally_hdr = ttk.Label(ally_border, text="伙伴区 (点击选择 mN)", font=("Segoe UI", 10, 'bold'))
+		ally_hdr.pack(anchor=tk.W, padx=6, pady=(4, 2))
+		self.cards_container = ttk.Frame(ally_border)
+		self.cards_container.pack(fill=tk.X, expand=False, padx=6, pady=(0, 6))
+		self.card_wraps = {}
+		self.selected_member_index = None
+		# 敌人区（右上）：红色外框
+		enemy_border = tk.Frame(
+			arena,
+			highlightthickness=int(getattr(self, 'ARENA_BORDER_THICKNESS', 4)),
+			highlightbackground=getattr(self, 'ENEMY_BORDER', '#E74C3C')
+		)
+		enemy_border.grid(row=0, column=1, sticky='nsew', padx=(3, 0))
+		enemy_hdr = ttk.Label(enemy_border, text="敌人区 (点击选择 eN)", font=("Segoe UI", 10, 'bold'))
+		enemy_hdr.pack(anchor=tk.W, padx=6, pady=(4, 2))
+		self.enemy_cards_container = ttk.Frame(enemy_border)
+		self.enemy_cards_container.pack(fill=tk.X, expand=False, padx=6, pady=(0, 6))
 		self.enemy_card_wraps = {}
 		self.selected_enemy_index = None
 		# 技能/目标选择状态
@@ -525,20 +560,14 @@ class GameTkApp:
 		ttk.Button(actions, text="返回上一级", command=lambda: self._run_cmd('back'), style="Tiny.TButton").grid(row=0, column=0, padx=2, sticky='w')
 		ttk.Button(actions, text="结束回合 (end)", command=lambda: self._run_cmd('end'), style="Tiny.TButton").grid(row=0, column=1, padx=2, sticky='w')
 
-		# 队伍卡片
-		frm_cards = ttk.LabelFrame(body, text="队伍 (点击选择 mN)")
-		frm_cards.grid(row=2, column=0, columnspan=2, sticky='ew', pady=(2, 4))
-		self.cards_container = ttk.Frame(frm_cards)
-		self.cards_container.pack(fill=tk.X, expand=False, padx=4, pady=4)
-		self.card_wraps = {}
-		self.selected_member_index = None
+		# （队伍区已移至顶部战场区）
 
-		# 操作栏：在队伍下方显示所选英雄的可用操作（攻击/装备/卸下/替换）
-		self.frm_operations = ttk.LabelFrame(body, text="操作栏")
+		# 操作栏（提示）：操作已改为悬浮窗（移到友方卡片上）
+		self.frm_operations = ttk.LabelFrame(body, text="操作提示")
 		self.frm_operations.grid(row=3, column=0, columnspan=2, sticky='ew', pady=(2, 4))
 		self.frm_operations.columnconfigure(0, weight=1)
 		# 初始占位
-		ttk.Label(self.frm_operations, text="(未选择队员)", foreground="#666").grid(row=0, column=0, sticky='w', padx=6, pady=6)
+		ttk.Label(self.frm_operations, text="将鼠标移到友方角色卡上以显示可用技能/攻击；选择目标后可在悬浮窗内确认或取消。", foreground="#666").grid(row=0, column=0, sticky='w', padx=6, pady=6)
 
 		# 底部：统一“战斗日志”
 		bottom = ttk.Frame(body)
@@ -1022,6 +1051,17 @@ class GameTkApp:
 
 	def _back_to_menu(self):
 		"""退出游戏回到主菜单并恢复菜单展示。"""
+		# 强制清理顶层 UI（操作弹窗/过渡层），不留残影
+		try:
+			ops = (getattr(self, 'views', {}) or {}).get('ops')
+			if ops and hasattr(ops, 'hide_popup'):
+				ops.hide_popup(force=True)
+		except Exception:
+			pass
+		try:
+			self._hide_scene_transition()
+		except Exception:
+			pass
 		self.controller = None
 		self.frame_game.pack_forget()
 		self.frame_menu.pack(fill=tk.BOTH, expand=True)
@@ -1102,6 +1142,11 @@ class GameTkApp:
 			ov = tk.Toplevel(self.root)
 			ov.wm_overrideredirect(True)
 			ov.attributes('-alpha', 0.0)
+			# 置顶，避免被其他顶层窗口（如 tooltip/操作弹窗）覆盖
+			try:
+				ov.attributes('-topmost', True)
+			except Exception:
+				pass
 			ov.lift()
 			ov.geometry(f"{self.root.winfo_width()}x{self.root.winfo_height()}+{self.root.winfo_rootx()}+{self.root.winfo_rooty()}")
 			frm = ttk.Frame(ov)
@@ -1109,6 +1154,17 @@ class GameTkApp:
 			lbl = ttk.Label(frm, text="正在切换场景…", font=("Segoe UI", 14, "bold"))
 			lbl.place(relx=0.5, rely=0.5, anchor='center')
 			setattr(self, '_scene_overlay', ov)
+			# 随主窗口移动/缩放时同步覆盖层尺寸
+			def _sync_overlay_geometry(_e=None):
+				try:
+					ov.geometry(f"{self.root.winfo_width()}x{self.root.winfo_height()}+{self.root.winfo_rootx()}+{self.root.winfo_rooty()}")
+				except Exception:
+					pass
+			try:
+				bind_id = self.root.bind('<Configure>', _sync_overlay_geometry, add='+')
+				setattr(self, '_scene_overlay_bind_id', bind_id)
+			except Exception:
+				setattr(self, '_scene_overlay_bind_id', None)
 			# 使用可配置的淡入参数
 			interval = int(getattr(self, '_overlay_fade_interval', 16))
 			step = float(getattr(self, '_overlay_fade_step', 0.1))
@@ -1132,6 +1188,14 @@ class GameTkApp:
 		if ov is None:
 			return
 		try:
+			# 解绑几何同步
+			try:
+				bid = getattr(self, '_scene_overlay_bind_id', None)
+				if bid:
+					self.root.unbind('<Configure>', bid)
+				setattr(self, '_scene_overlay_bind_id', None)
+			except Exception:
+				pass
 			ov.destroy()
 		except Exception:
 			pass
@@ -1160,6 +1224,22 @@ class GameTkApp:
 					unsubscribe_event(evt, cb)
 				except Exception:
 					pass
+			# 强制隐藏顶层窗口（过渡层/操作弹窗/tooltip）避免 Tcl 命令残留
+			try:
+				ops = (getattr(self, 'views', {}) or {}).get('ops')
+				if ops and hasattr(ops, 'hide_popup'):
+					ops.hide_popup(force=True)
+			except Exception:
+				pass
+			try:
+				self._hide_scene_transition()
+			except Exception:
+				pass
+		except Exception:
+			pass
+		# 取消 root.after 调度，尽量避免 destroy 时的 deletecommand 异常
+		try:
+			self.root.after_cancel(getattr(self, '_scene_overlay_bind_id', None))
 		except Exception:
 			pass
 		self.root.destroy()

@@ -231,8 +231,8 @@ class SimplePvEGame:
         self.player.board.clear()
         self.player.hand.clear()  # 场景模式不自动发起手牌
 
-        # 敌人
-        for ed in data.get('enemies', []):
+        # 敌人（最多 15）
+        for ed in data.get('enemies', [])[:15]:
             e = self._make_enemy(ed)
             if e is not None:
                 self.enemies.append(e)
@@ -243,15 +243,21 @@ class SimplePvEGame:
             if r is not None:
                 self.resources.append(r)
 
-        # 我方随从
+        # 我方随从（最多 15）
         if eff_keep and preserved_board:
             # 保留旧随从，忽略新场景 board
-            self.player.board.extend(preserved_board)
+            self.player.board.extend(preserved_board[:15])
         else:
-            for md in data.get('board', []):
+            for md in data.get('board', [])[:15]:
                 m = self._make_minion(md)
                 if m is not None:
-                    self.player.board.append(m)
+                    if len(self.player.board) < 15:
+                        self.player.board.append(m)
+                    else:
+                        break
+        # 再次裁剪，确保不超过 15
+        if len(self.player.board) > 15:
+            self.player.board[:] = self.player.board[:15]
 
         # 通知资源区已重置（UI 只订阅 resource_changed）
         try:
@@ -555,12 +561,13 @@ class SimplePvEGame:
                 if not func:
                     return False, f'未知技能: {skill_name}'
                 ok, msg = func(src, tgt)
-            # 体力消耗实际扣除
-            try:
-                src.spend_stamina(cost)
-            except Exception:
-                pass
-            # 技能结束后若清场，触发场景切换（如有定义）
+            # 仅当执行成功时扣除体力
+            if ok:
+                try:
+                    src.spend_stamina(cost)
+                except Exception:
+                    pass
+            # 技能结束后若清场，触发场景切换（如有定义）。放在所有结算（含体力扣除）之后。
             try:
                 if not self.enemies:
                     self._check_on_clear_transition()

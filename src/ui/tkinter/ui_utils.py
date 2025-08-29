@@ -50,7 +50,14 @@ def attach_tooltip_deep(root_widget: tk.Widget, text_provider: Callable[[], str]
                 tw = tk.Toplevel(root_widget)
                 tw.wm_overrideredirect(True)
                 tw.wm_geometry(f"+{x}+{y}")
-                lbl = ttk.Label(tw, text=text, relief='solid', borderwidth=1, padding=6, background='#ffffe0')
+                # 置顶以避免被其他顶层窗体（如操作弹窗）遮挡
+                try:
+                    tw.attributes('-topmost', True)
+                except Exception:
+                    pass
+                tw.lift()
+                # 提高可读性：适当的换行宽度
+                lbl = ttk.Label(tw, text=text, relief='solid', borderwidth=1, padding=6, background='#ffffe0', wraplength=360)
                 lbl.pack()
                 tip['win'] = tw
                 # 周期性巡检，兜底隐藏（防止未触发 Leave/Motion 时残留）

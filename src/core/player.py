@@ -27,7 +27,7 @@ class Player:
         card = self.hand[card_idx]
 
         # 简化的出牌逻辑，直接添加到战场
-        if len(self.board) < 7:  # 最多7张牌
+        if len(self.board) < 15:  # 最多15张牌
             self.board.append(card)
             self.hand.pop(card_idx)
 

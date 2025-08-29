@@ -32,7 +32,7 @@ def _skill_catalog() -> dict[str, dict]:
     return _SKILL_CATALOG_CACHE
 
 
-def equipment_tooltip(item, label: str) -> str:
+def equipment_tooltip(item, label: str, *, is_enemy: bool | None = None, app=None) -> str:
     if not item:
         return f"{label}: 空槽"
     lines: list[str] = []
@@ -60,9 +60,17 @@ def equipment_tooltip(item, label: str) -> str:
         parts.append('双手')
     if parts:
         lines.append('，'.join(parts))
-    # 主动技能
+    # 主动技能（如果配置允许在敌方显示则显示，否则敌方隐藏）
     sks = list(getattr(item, 'active_skills', []) or [])
-    if sks:
+    show_actives = True
+    try:
+        if is_enemy and app is not None:
+            tcfg = getattr(app, '_tooltip_cfg', {}) or {}
+            if not bool(tcfg.get('enemy_show_active_skills', False)):
+                show_actives = False
+    except Exception:
+        show_actives = True
+    if sks and show_actives:
         cat = _skill_catalog()
         lines.append('主动技能:')
         for sid in sks:
@@ -151,7 +159,7 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
     top.columnconfigure(0, weight=1)
     ttk.Label(top, text=str(name), font=("Segoe UI", 10, "bold")).grid(row=0, column=0, sticky='w')
 
-    # stats: vertical stack (attack, hp, AC) — 更紧凑的行距与小字体
+    # stats: vertical stack（仅显示 ATK 与 AC；HP 改为下方血条）
     stats = ttk.Frame(frame)
     stats.grid(row=1, column=0, sticky='n', pady=(0, 0))
     # 先计算 AC 数值，再渲染文本，避免未定义变量
@@ -172,9 +180,9 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
     except Exception:
         ac_val = 10 + int(eq_def)
     # 使用 ASCII 文本，避免表情符号在 Windows 上导致的行高扩大；并采用 Tiny.TLabel 样式（8pt）
-    atk_var = tk.StringVar(value=f"ATK {total_atk}")
+    atk_var = tk.StringVar(value=f"{total_atk}")
     hp_var = tk.StringVar(value=f"HP {cur_hp}/{max_hp}")
-    ac_var = tk.StringVar(value=f"AC {ac_val}")
+    ac_var = tk.StringVar(value=f"{ac_val}")
     try:
         cols = getattr(app, '_stats_colors', {}) or {}
         col_atk = cols.get('atk', '#E6B800')
@@ -183,9 +191,17 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
         col_ac = cols.get('ac', '#2980b9')
     except Exception:
         col_atk, col_hp_pos, col_hp_zero, col_ac = "#E6B800", "#27ae60", "#c0392b", "#2980b9"
-    ttk.Label(stats, textvariable=atk_var, foreground=col_atk, style="Tiny.TLabel").grid(row=0, column=0, sticky='w', padx=0, pady=(0, 0))
-    ttk.Label(stats, textvariable=hp_var, foreground=(col_hp_pos if cur_hp > 0 else col_hp_zero), style="Tiny.TLabel").grid(row=1, column=0, sticky='w', padx=0, pady=(0, 0))
-    ttk.Label(stats, textvariable=ac_var, foreground=col_ac, style="Tiny.TLabel").grid(row=2, column=0, sticky='w', padx=0, pady=(0, 0))
+    stats.grid_columnconfigure(0, weight=0)
+    # 攻击：图标 + 数字（3位预留），紧贴无空格
+    atk_wrap = ttk.Frame(stats)
+    ttk.Label(atk_wrap, text="⚔", font=("Segoe UI", 11), padding=0).pack(side=tk.LEFT, padx=(0,0))
+    ttk.Label(atk_wrap, textvariable=atk_var, foreground=col_atk, style="Tiny.TLabel", font=("Segoe UI", 11, 'bold'), anchor='w', padding=0).pack(side=tk.LEFT, padx=(0,0))
+    atk_wrap.grid(row=0, column=0, sticky='w', padx=(0, 0), pady=(0, 0))
+    # 防御：图标 + 数字（3位预留），紧贴无空格
+    ac_wrap = ttk.Frame(stats)
+    ttk.Label(ac_wrap, text="🛡", font=("Segoe UI", 11), padding=0).pack(side=tk.LEFT, padx=(0,0))
+    ttk.Label(ac_wrap, textvariable=ac_var, foreground=col_ac, style="Tiny.TLabel", font=("Segoe UI", 11, 'bold'), anchor='w', padding=0).pack(side=tk.LEFT, padx=(0,0))
+    ac_wrap.grid(row=1, column=0, sticky='w', padx=(0, 0), pady=(2, 0))
 
     # 角色卡右侧装备槽：敌方显示为禁用态（可见信息不可操作），我方可操作
     eq = getattr(m, 'equipment', None)
@@ -206,7 +222,7 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
         return f"{label}: -"
 
     def tip_text_for(item, label):
-        return equipment_tooltip(item, label)
+        return equipment_tooltip(item, label, is_enemy=is_enemy, app=app)
 
     def make_btn(r, label, item, slot_key):
         text = slot_text(label, item)
@@ -217,6 +233,11 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
             btn = ttk.Button(right, text=text, command=lambda: app._slot_click(m_index, slot_key, item), style="Slot.TButton")
         # 更紧凑的外边距与单列布局
         btn.grid(row=r, column=0, sticky='e', pady=(0, 0), padx=(0, 0))
+        # 标记为装备槽按钮，AlliesView 绑定时将跳过其操作栏事件
+        try:
+            setattr(btn, '_is_equipment_slot', True)
+        except Exception:
+            pass
         U.attach_tooltip_deep(btn, lambda it=item, lb=label: tip_text_for(it, lb))
         return btn
 
@@ -228,8 +249,17 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
     try:
         st_cfg = getattr(app, '_stamina_cfg', {}) or {}
         if st_cfg.get('enabled', True):
-            st_row = ttk.Frame(frame)
+            # 体力条使用与卡片不同的背景色，提升可辨识度
+            # 仅展示圆角体力胶囊，不显示文字与数值
+            bgc_card = None
+            try:
+                bgc_card = frame.cget('background')
+            except Exception:
+                bgc_card = None
+            bgc = (st_cfg.get('bg') or '#f2f3f5')
+            st_row = tk.Frame(frame, bg=bgc)
             st_row.grid(row=2, column=0, columnspan=2, sticky='ew', pady=(2, 0))
+            # 仅一列：胶囊容器
             st_row.columnconfigure(0, weight=1)
             caps = []
             max_caps = max(1, int(st_cfg.get('max_caps', 6)))
@@ -237,19 +267,68 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
             col_off = ((st_cfg.get('colors') or {}).get('off') or '#e74c3c')
             cur = int(getattr(m, 'stamina', 0)); mx = int(getattr(m, 'stamina_max', cur or 1))
             show_n = min(mx, max_caps)
-            cap_wrap = ttk.Frame(st_row)
-            cap_wrap.grid(row=0, column=0, sticky='e')
+            cap_wrap = tk.Frame(st_row, bg=bgc)
+            cap_wrap.grid(row=0, column=0, sticky='w')
             for i in range(show_n):
-                c = tk.Canvas(cap_wrap, width=8, height=14, highlightthickness=0, bg=frame.cget('background'))
+                # 使用圆头直线绘制更平滑的圆角长条
+                c = tk.Canvas(cap_wrap, width=8, height=16, highlightthickness=0, bg=bgc)
                 fill = col_on if i < cur else col_off
-                c.create_rectangle(2, 2, 6, 12, outline=fill, fill=fill)
-                c.pack(side=tk.LEFT, padx=1)
+                # 垂直线，宽度代表条的粗细，capstyle=ROUND 形成上下圆角
+                c.create_line(4, 2, 4, 14, fill=fill, width=4, capstyle=tk.ROUND)
+                c.pack(side=tk.LEFT, padx=0)
                 caps.append(c)
-            lbl = ttk.Label(cap_wrap, text=f"{cur}/{mx}", style="Tiny.TLabel")
-            lbl.pack(side=tk.LEFT, padx=(4,0))
             frame._st_caps = caps
-            frame._st_lbl = lbl
             frame._st_colors = (col_on, col_off)
+    except Exception:
+        pass
+
+    # HP bar row: placed below stamina row (new row 3)
+    try:
+        hp_cfg = getattr(app, '_hp_bar_cfg', {}) or {}
+        h = int(hp_cfg.get('height', 12))
+        bg = hp_cfg.get('bg', '#e5e7eb')
+        fg = hp_cfg.get('fg', '#e74c3c')
+        tx = hp_cfg.get('text', '#ffffff')
+        fs = int(hp_cfg.get('font_size', 10))
+        oc = hp_cfg.get('text_outline', '#000000')
+        hp_row = tk.Frame(frame, bg=bg)
+        hp_row.grid(row=3, column=0, columnspan=2, sticky='ew', pady=(2, 0))
+        # 背景底条
+        hp_canvas = tk.Canvas(hp_row, height=h, highlightthickness=0, bg=bg)
+        hp_canvas.pack(fill=tk.X, expand=True)
+        # 画前景填充（按比例）并覆盖文本
+        def _draw_hp_bar(cur:int, mx:int):
+            hp_canvas.delete('all')
+            width = max(1, int(hp_canvas.winfo_width() or 1))
+            ratio = 0 if mx <= 0 else max(0.0, min(1.0, float(cur)/float(mx)))
+            fill_w = int(width * ratio)
+            hp_canvas.create_rectangle(0, 0, width, h, fill=bg, outline=bg, width=0)
+            if fill_w > 0:
+                hp_canvas.create_rectangle(0, 0, fill_w, h, fill=fg, outline=fg, width=0)
+            # 覆盖文本（描边）
+            cx, cy = width//2, h//2
+            try:
+                # 细描边：四向偏移
+                for dx, dy in ((-1,0),(1,0),(0,-1),(0,1)):
+                    hp_canvas.create_text(cx+dx, cy+dy, text=f"{cur}/{mx}", fill=oc, font=("Segoe UI", fs, 'bold'))
+            except Exception:
+                pass
+            hp_canvas.create_text(cx, cy, text=f"{cur}/{mx}", fill=tx, font=("Segoe UI", fs, 'bold'))
+        # 初始绘制需要在布局完成后获取宽度
+        def _after_map_draw():
+            _draw_hp_bar(cur_hp, max_hp)
+        try:
+            hp_canvas.bind('<Configure>', lambda _e: _draw_hp_bar(int(getattr(frame, '_hp_cur', cur_hp)), int(getattr(frame, '_hp_max', max_hp))))
+        except Exception:
+            pass
+        frame._hp_canvas = hp_canvas
+        frame._hp_cur = cur_hp
+        frame._hp_max = max_hp
+        # 延迟一次绘制
+        try:
+            frame.after(0, _after_map_draw)
+        except Exception:
+            pass
     except Exception:
         pass
 

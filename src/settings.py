@@ -42,8 +42,12 @@ DEFAULTS: Dict[str, Any] = {
 	},
 	"ui": {
 		"tk": {
-			# 角色卡牌尺寸（像素）
-			"card": { "width": 180, "height": 100 },
+			"arena": {
+				# 顶部战场区外框颜色与粗细
+				"ally_border": "#4A90E2",
+				"enemy_border": "#E74C3C",
+				"thickness": 4
+			},
 			"border": {
 				# 各种高亮边框粗细（像素）
 				"default": 3,
@@ -69,11 +73,19 @@ DEFAULTS: Dict[str, Any] = {
 			},
 			"scene_transition": {
 				# 切换前延迟重建视图（留时间显示死亡/浮字）
-				"delay_ms": 2500,
+				"delay_ms": 1500,
 			},
 			"tooltip": {
 				# 悬浮提示刷新的轮询间隔（越小越灵敏）
 				"tick_ms": 120,
+				# 是否在敌方的装备提示中展示主动技能列表
+				"enemy_show_active_skills": False
+			},
+			# 操作弹窗配置（攻击/技能列表）
+			"ops_popup": {
+				"trigger": "click",       # click | hover
+				"hide_delay_ms": 300,       # 仅 hover 下有效
+				"offset": [4, 0]            # 相对卡片右侧的位移 (dx, dy)
 			},
 			"stats_colors": {
 				# 角色卡上 ATK/HP/AC 的文字颜色
@@ -83,19 +95,27 @@ DEFAULTS: Dict[str, Any] = {
 				"ac": "#2980b9",
 			},
 			"card": {
-				# 卡片默认尺寸（确保体力行不被裁剪）
-				"width": 180,
-				"height": 100
+				# 卡片默认尺寸（尽量紧凑；体力行存在时视图层会保证最小高度不被裁切）
+				"width": 160,
+				"height": 70
 			},
 			"stamina": {
 				# 体力显示（角色卡左上角的胶囊/条）
 				"enabled": True,
-				"max_caps": 15,            # UI 最多绘制的胶囊数量上限（不影响规则）
+				"max_caps": 20,            # UI 最多绘制的胶囊数量上限（不影响规则）
+				"bg": "#f2f3f5",           # 体力条背景色（与卡片背景区分开）
 				"colors": {
 					"on": "#2ecc71",       # 可用体力颜色（绿）
 					"off": "#e74c3c"       # 已消耗体力颜色（红）
 				},
 				"shape": "capsule",       # 形状占位（暂不区分，统一用小竖条表示）
+			},
+			"hp_bar": {
+				# 血量条（显示在体力条下方）
+				"height": 12,
+				"bg": "#e5e7eb",
+				"fg": "#e74c3c",          # 血条填充色（红）
+				"text": "#ffffff"          # 覆盖文字颜色
 			},
 			"log": {
 				"tags": {
@@ -136,7 +156,7 @@ DEFAULTS: Dict[str, Any] = {
 		}
 	},
 	"rules": {
-		# 玩法规则：体力及各技能的默认消耗
+		# 玩法规则：体力	及各技能的默认消耗
 		"stamina": {
 			"base": 3,              # 默认体力上限（每回合开始回满）
 			"refill": "full",      # 回合开始的恢复策略（目前仅支持 full）
@@ -258,6 +278,7 @@ def apply_to_tk_app(app) -> None:
 	cfg_tk = tk_cfg()
 	borders = cfg_tk.get("border", {})
 	cards = cfg_tk.get("card", {})
+	arena = cfg_tk.get("arena", {})
 	palette = cfg_tk.get("highlight", {})
 	stats_colors = cfg_tk.get("stats_colors", {})
 	log_tags = ((cfg_tk.get("log") or {}).get("tags") or {})
@@ -265,6 +286,13 @@ def apply_to_tk_app(app) -> None:
 	try:
 		app.CARD_W = int(cards.get("width", getattr(app, "CARD_W", 180)))
 		app.CARD_H = int(cards.get("height", getattr(app, "CARD_H", 80)))
+	except Exception:
+		pass
+	# arena border colors/thickness
+	try:
+		app.ARENA_BORDER_THICKNESS = int(arena.get("thickness", getattr(app, "ARENA_BORDER_THICKNESS", 4)))
+		app.ALLY_BORDER = arena.get("ally_border", getattr(app, "ALLY_BORDER", "#4A90E2"))
+		app.ENEMY_BORDER = arena.get("enemy_border", getattr(app, "ENEMY_BORDER", "#E74C3C"))
 	except Exception:
 		pass
 	try:
@@ -293,11 +321,28 @@ def apply_to_tk_app(app) -> None:
 		app._stamina_cfg = {
 			"enabled": bool(st.get("enabled", True)),
 			"max_caps": int(st.get("max_caps", 6)),
+			"bg": st.get("bg", "#f2f3f5"),
 			"colors": {
 				"on": (st.get("colors", {}) or {}).get("on", "#2ecc71"),
 				"off": (st.get("colors", {}) or {}).get("off", "#e74c3c"),
 			}
 		}
+	except Exception:
+		pass
+	# expose hp bar config
+	try:
+		app._hp_bar_cfg = {
+			"height": int(cfg_tk.get("hp_bar", {}).get("height", 12)),
+			"bg": cfg_tk.get("hp_bar", {}).get("bg", "#e5e7eb"),
+			"fg": cfg_tk.get("hp_bar", {}).get("fg", "#e74c3c"),
+			"text": cfg_tk.get("hp_bar", {}).get("text", "#ffffff"),
+		}
+	except Exception:
+		pass
+	# expose tooltip & ops popup configs
+	try:
+		app._tooltip_cfg = cfg_tk.get("tooltip", {}) or {}
+		app._ops_popup_cfg = cfg_tk.get("ops_popup", {}) or {"trigger":"click","hide_delay_ms":300,"offset":[4,0]}
 	except Exception:
 		pass
 	# animation shake toggle compatibility with existing flag

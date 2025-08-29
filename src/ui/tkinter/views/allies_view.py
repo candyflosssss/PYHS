@@ -26,6 +26,8 @@ class AlliesView:
         self.game = None
         self._container = None
         self._pending_render = False
+        # 临时排除集合：记录已死亡但尚未从模型中移除的单位，避免阵型留空
+        self._dead_exclude = set()
 
     def set_context(self, game):
         self.game = game
@@ -36,7 +38,7 @@ class AlliesView:
     def mount(self):
         if self._subs:
             return
-        for evt in ('card_damaged','card_healed','card_died'):
+        for evt in ('card_damaged','card_healed','card_will_die','card_died'):
             self._subs.append((evt, subscribe_event(evt, self._on_proxy)))
         # equipment impacts ally stats and operations
         self._subs.append(('equipment_changed', subscribe_event('equipment_changed', self._on_equip_changed)))
@@ -65,38 +67,63 @@ class AlliesView:
                 inner = next((ch for ch in wrap.winfo_children() if hasattr(ch, '_model_ref')), None)
                 if inner is None or getattr(inner, '_model_ref', None) is not card:
                     continue
-                if evt == 'card_died' or int(getattr(card, 'hp', 1)) <= 0:
+                if evt in ('card_will_die','card_died') or int(getattr(card, 'hp', 1)) <= 0:
+                    # 标记为死亡排除，确保下一次渲染紧凑排布
                     try:
-                        ANIM.on_hit(self.app, wrap, kind='damage')
-                        amt = max(0, int((payload or {}).get('amount', 0)))
-                        if amt:
-                            ANIM.float_text(self.app, wrap, f"-{amt}", color="#c0392b")
+                        self._dead_exclude.add(card)
                     except Exception:
                         pass
-                    def _remove_idx():
-                        try:
-                            ANIM.cancel_widget_anims(wrap)
-                        except Exception:
-                            pass
-                        try:
-                            self.app.card_wraps.pop(idx, None)
-                        except Exception:
-                            pass
-                        try:
-                            self._pending_render = False
-                        except Exception:
-                            pass
-                        self._schedule_render()
-                    ANIM.on_death(self.app, wrap, on_removed=_remove_idx)
+                    # 去掉死亡动画：直接安排一次重渲染，让阵型用最新队伍紧凑重排
+                    try:
+                        ANIM.cancel_widget_anims(wrap)
+                    except Exception:
+                        pass
+                    try:
+                        self.app.card_wraps.pop(idx, None)
+                    except Exception:
+                        pass
+                    # 如果该索引正显示操作弹窗或被选中，则一并清除
+                    try:
+                        ops = (getattr(self.app, 'views', {}) or {}).get('ops')
+                        if ops and getattr(ops, '_popup_for_index', None) == idx:
+                            ops.hide_popup(force=True)
+                    except Exception:
+                        pass
+                    try:
+                        if getattr(self.app, 'selected_member_index', None) == idx:
+                            self.app.selection.clear_all()
+                    except Exception:
+                        pass
+                    self._pending_render = False
+                    self._schedule_render()
                 else:
                     # 更新文本
                     atk = int(getattr(card, 'get_total_attack')() if hasattr(card, 'get_total_attack') else getattr(card, 'attack', 0))
                     hp = int(getattr(card, 'hp', 0)); mhp = int(getattr(card, 'max_hp', hp))
                     defv = int(getattr(card, 'get_total_defense')() if hasattr(card, 'get_total_defense') else getattr(card, 'defense', 0))
                     ac = 10 + defv
-                    inner._atk_var.set(f"ATK {atk}")
+                    inner._atk_var.set(str(atk))
                     inner._hp_var.set(f"HP {hp}/{mhp}")
-                    inner._ac_var.set(f"AC {ac}")
+                    # 重绘血条
+                    try:
+                        if hasattr(inner, '_hp_canvas'):
+                            inner._hp_cur = hp
+                            inner._hp_max = mhp
+                            w = max(1, int(inner._hp_canvas.winfo_width() or 1))
+                            h = int(getattr(self.app, '_hp_bar_cfg', {}).get('height', 12))
+                            bg = getattr(self.app, '_hp_bar_cfg', {}).get('bg', '#e5e7eb')
+                            fg = getattr(self.app, '_hp_bar_cfg', {}).get('fg', '#e74c3c')
+                            tx = getattr(self.app, '_hp_bar_cfg', {}).get('text', '#ffffff')
+                            inner._hp_canvas.delete('all')
+                            ratio = 0 if mhp <= 0 else max(0.0, min(1.0, float(hp)/float(mhp)))
+                            fill_w = int(w * ratio)
+                            inner._hp_canvas.create_rectangle(0, 0, w, h, fill=bg, outline=bg, width=0)
+                            if fill_w > 0:
+                                inner._hp_canvas.create_rectangle(0, 0, fill_w, h, fill=fg, outline=fg, width=0)
+                            inner._hp_canvas.create_text(w//2, h//2, text=f"{hp}/{mhp}", fill=tx, font=("Segoe UI", 8))
+                    except Exception:
+                        pass
+                    inner._ac_var.set(str(ac))
                     # 动画：伤害/治疗
                     try:
                         kind = 'heal' if evt == 'card_healed' else 'damage'
@@ -137,8 +164,8 @@ class AlliesView:
                         atk = int(getattr(card, 'get_total_attack')() if hasattr(card, 'get_total_attack') else getattr(card, 'attack', 0))
                         defv = int(getattr(card, 'get_total_defense')() if hasattr(card, 'get_total_defense') else getattr(card, 'defense', 0))
                         cur = int(getattr(card, 'hp', 0)); mx = int(getattr(card, 'max_hp', cur))
-                        inner._atk_var.set(f"ATK {atk}")
-                        inner._ac_var.set(f"AC {10 + defv}")
+                        inner._atk_var.set(str(atk))
+                        inner._ac_var.set(str(10 + defv))
                         inner._hp_var.set(f"HP {cur}/{mx}")
                         # 同步装备按钮文字与 tooltip（不重建控件，避免闪烁）
                         try:
@@ -211,18 +238,16 @@ class AlliesView:
                     continue
                 try:
                     caps = getattr(inner, '_st_caps', None)
-                    lbl = getattr(inner, '_st_lbl', None)
                     col_on, col_off = getattr(inner, '_st_colors', ('#2ecc71','#e74c3c'))
                     if isinstance(caps, list):
                         for i, c in enumerate(caps):
                             fill = col_on if i < cur else col_off
                             try:
                                 c.delete('all')
-                                c.create_rectangle(2, 2, 6, 12, outline=fill, fill=fill)
+                                # 与 cards 一致：圆头直线
+                                c.create_line(4, 2, 4, 14, fill=fill, width=4, capstyle='round')
                             except Exception:
                                 pass
-                    if lbl:
-                        lbl.config(text=f"{cur}/{mx}")
                 except Exception:
                     pass
                 break
@@ -266,7 +291,27 @@ class AlliesView:
         game = self.game or getattr(self.app.controller, 'game', None)
         if not game:
             return
-        board = getattr(game.player, 'board', [])
+        raw_board = getattr(game.player, 'board', [])
+        # 清理临时排除集合，仅保留仍在当前棋盘列表中的对象，避免集合无限增长
+        try:
+            cur = list(raw_board or [])
+            self._dead_exclude = {m for m in (self._dead_exclude or set()) if m in cur}
+        except Exception:
+            pass
+        # 过滤已死亡或空位，确保阵型紧凑
+        board = []
+        for m in list(raw_board or []):
+            try:
+                if m is None:
+                    continue
+                if int(getattr(m, 'hp', 0)) <= 0:
+                    continue
+                if m in self._dead_exclude:
+                    # 已在死亡排除集合中的成员也跳过
+                    continue
+            except Exception:
+                pass
+            board.append(m)
         if not board:
             try:
                 container.grid_columnconfigure(0, weight=1)
@@ -278,43 +323,104 @@ class AlliesView:
             except Exception:
                 pass
             return
-        members = list(board)[:10]
-        max_per_row = 5
-        rows = [members[:max_per_row], members[max_per_row:]]
-        for r_idx, row_members in enumerate(rows):
-            if not row_members:
-                continue
+        members = list(board)[:15]
+        cols, rows = 3, 5
+        grid = [[None for _ in range(cols)] for _ in range(rows)]
+        for idx, m in enumerate(members):
+            r = idx // cols
+            c = idx % cols
+            grid[r][c] = m
+        for r_idx in range(rows):
             row_f = ttk.Frame(container)
             row_f.grid(row=r_idx, column=0, sticky='ew', pady=(2, 2))
-            for c in (0, max_per_row + 1):
-                row_f.grid_columnconfigure(c, weight=1)
-            k = len(row_members)
-            start = 1 + (max_per_row - k) // 2
-            for j, m in enumerate(row_members):
-                m_index = r_idx * max_per_row + j + 1
+            row_f.grid_columnconfigure(0, weight=1)
+            row_f.grid_columnconfigure(cols + 1, weight=1)
+            inner_row = ttk.Frame(row_f)
+            inner_row.grid(row=0, column=1, sticky='ew')
+            for c in range(cols):
+                m = grid[r_idx][c]
+                m_index = r_idx * cols + c + 1
                 # 若启用体力展示，保证卡片最小高度，避免体力行被裁切
                 _h = self.app.CARD_H
                 try:
                     stc = getattr(self.app, '_stamina_cfg', {}) or {}
                     if stc.get('enabled', True):
-                        _h = max(int(_h), 140)
+                        # 缩小卡片高度阈值，仅保证不裁切体力行
+                        _h = max(int(_h), 120)
                 except Exception:
                     pass
-                wrap = tk.Frame(row_f, highlightthickness=self.app._border_default, highlightbackground="#cccccc", width=self.app.CARD_W, height=_h)
+                wrap = tk.Frame(inner_row, highlightthickness=self.app._border_default, highlightbackground="#cccccc", width=self.app.CARD_W, height=_h)
                 try:
                     wrap.pack_propagate(False)
                 except Exception:
                     pass
-                inner = self._create_character_card(wrap, m, m_index)
-                inner.pack(fill=tk.BOTH, expand=True)
-                col = start + j
-                wrap.grid(row=0, column=col, padx=2, sticky='n')
+                has_member = m is not None
+                if has_member:
+                    inner = self._create_character_card(wrap, m, m_index)
+                    inner.pack(fill=tk.BOTH, expand=True)
+                wrap.grid(row=0, column=c, padx=2, sticky='n')
                 def bind_all(w):
-                    w.bind('<Button-1>', lambda _e, idx=m_index: self.app.selection.on_ally_click(idx))
+                    # 装备按钮不绑定操作栏行为
+                    if getattr(w, '_is_equipment_slot', False):
+                        return
+                    # 先保持原有选中逻辑
+                    def _on_select(_e=None, idx=m_index):
+                        try:
+                            self.app.selection.on_ally_click(idx)
+                        except Exception:
+                            pass
+                    if has_member:
+                        w.bind('<Button-1>', _on_select)
+                    # 根据设置决定触发方式
+                    trig = (getattr(self.app, '_ops_popup_cfg', {}) or {}).get('trigger', 'click')
+                    if has_member and str(trig).lower() == 'click':
+                        def _on_click_toggle(_e=None, idx=m_index, ww=w):
+                            try:
+                                ops = (getattr(self.app, 'views', {}) or {}).get('ops')
+                                if not ops:
+                                    return
+                                cur = getattr(ops, '_popup_for_index', None)
+                                vis = ops.is_popup_visible() if hasattr(ops, 'is_popup_visible') else bool(getattr(ops, '_popup', None))
+                                # 如果当前就是同一索引：
+                                # - 可见 -> 切换为隐藏
+                                # - 不可见 -> 重新显示
+                                if cur == idx:
+                                    if vis:
+                                        ops.hide_popup(force=True)
+                                    else:
+                                        ops.show_popup(idx, ww)
+                                else:
+                                    # 切换到新的卡片，直接显示
+                                    ops.show_popup(idx, ww)
+                            except Exception:
+                                pass
+                        # 附加到点击（在选中之后执行）
+                        w.bind('<Button-1>', _on_click_toggle, add=True)
+                    elif has_member:
+                        # 悬浮操作窗：进入显示该成员的可用操作；离开轻微延迟后隐藏
+                        def _on_enter(_e=None, idx=m_index, ww=w):
+                            try:
+                                ops = (getattr(self.app, 'views', {}) or {}).get('ops')
+                                if ops and hasattr(ops, 'show_popup'):
+                                    ops.show_popup(idx, ww)
+                            except Exception:
+                                pass
+                        def _on_leave(_e=None):
+                            try:
+                                ops = (getattr(self.app, 'views', {}) or {}).get('ops')
+                                if ops and hasattr(ops, 'hide_popup'):
+                                    # 延迟隐藏，允许鼠标移动到悬浮窗
+                                    delay = int((getattr(self.app, '_ops_popup_cfg', {}) or {}).get('hide_delay_ms', 300))
+                                    self.app.root.after(delay, lambda: ops.hide_popup())
+                            except Exception:
+                                pass
+                        w.bind('<Enter>', _on_enter)
+                        w.bind('<Leave>', _on_leave)
                     for ch in getattr(w, 'winfo_children', lambda: [])():
                         bind_all(ch)
                 bind_all(wrap)
-                self.app.card_wraps[m_index] = wrap
+                if has_member:
+                    self.app.card_wraps[m_index] = wrap
 
     def _create_character_card(self, parent, m, m_index: int):
         from .. import cards as tk_cards
