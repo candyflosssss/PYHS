@@ -422,3 +422,55 @@ def float_text(app, wrap: tk.Frame, text: str, *, color: str = '#c0392b', dy: in
         step()
     except Exception:
         pass
+
+
+def slide_to(app, widget: tk.Widget, *, x0: int, y0: int, x1: int, y1: int, duration_ms: int = 150, steps: int = 12, on_done: Optional[Callable[[], None]] = None):
+    """将 widget 从屏幕坐标 (x0,y0) 平滑移动到 (x1,y1)。期间使用 place 放置，结束后回调 on_done() 以恢复 pack/grid。
+    注意：调用方应确保在动画期间不要对该 widget 再次 pack/grid。
+    """
+    try:
+        _cancel_anim(widget)
+    except Exception:
+        pass
+    try:
+        interval = max(1, int(duration_ms // max(1, steps)))
+    except Exception:
+        interval = 12
+    try:
+        widget.lift()
+    except Exception:
+        pass
+    # 初始放置
+    try:
+        widget.place(in_=app.root, x=int(x0), y=int(y0))
+    except Exception:
+        try:
+            widget.place(x=int(x0), y=int(y0))
+        except Exception:
+            pass
+    state = {'i': 0}
+
+    def step():
+        i = state['i']
+        t = i / float(max(1, steps))
+        nx = int(_lerp(float(x0), float(x1), t))
+        ny = int(_lerp(float(y0), float(y1), t))
+        try:
+            widget.place_configure(x=nx, y=ny)
+        except Exception:
+            pass
+        state['i'] += 1
+        if state['i'] <= steps:
+            _schedule(widget, interval, step)
+        else:
+            try:
+                widget.place_forget()
+            except Exception:
+                pass
+            if callable(on_done):
+                try:
+                    on_done()
+                except Exception:
+                    pass
+
+    _schedule(widget, interval, step)

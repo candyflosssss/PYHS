@@ -126,29 +126,59 @@ class BattlecryCard(Card):
             if hasattr(target, 'take_damage'):
                 died = target.take_damage(damage)
                 _log(game, f"{self} 使用战吼效果对 {target} 造成 {damage} 点伤害")
-                # 敌人死亡时从游戏移除并触发亡语
+                # 敌人死亡：统一交给引擎处理以发布 enemy_died 事件
                 game_ref = game
                 try:
                     if died and game_ref is not None:
-                        removed = False
-                        if hasattr(game_ref, 'enemies') and isinstance(getattr(game_ref, 'enemies'), list):
-                            if target in game_ref.enemies:
-                                target.on_death(game_ref)
-                                game_ref.enemies.remove(target)
-                                removed = True
-                        if not removed and hasattr(game_ref, 'enemy_zone') and isinstance(getattr(game_ref, 'enemy_zone'), list):
-                            if target in game_ref.enemy_zone:
-                                target.on_death(game_ref)
-                                game_ref.enemy_zone.remove(target)
-                                removed = True
-                        # Boss 被击杀：结束游戏（若有 running 标志）
-                        if not removed and hasattr(game_ref, 'boss') and target is getattr(game_ref, 'boss') and getattr(target, 'hp', 1) <= 0:
-                            if hasattr(game_ref, 'running'):
-                                game_ref.running = False
+                        if hasattr(game_ref, '_handle_enemy_death'):
+                            game_ref._handle_enemy_death(target)
+                        else:
+                            # 退化处理：从列表移除并显式发布事件
+                            removed = False
+                            if hasattr(game_ref, 'enemies') and isinstance(getattr(game_ref, 'enemies'), list):
+                                if target in game_ref.enemies:
+                                    try:
+                                        target.on_death(game_ref)
+                                    except Exception:
+                                        pass
+                                    game_ref.enemies.remove(target)
+                                    removed = True
+                            if not removed and hasattr(game_ref, 'enemy_zone') and isinstance(getattr(game_ref, 'enemy_zone'), list):
+                                if target in game_ref.enemy_zone:
+                                    try:
+                                        target.on_death(game_ref)
+                                    except Exception:
+                                        pass
+                                    game_ref.enemy_zone.remove(target)
+                                    removed = True
+                            try:
+                                publish_event('enemy_died', {'enemy': target, 'scene_changed': False})
+                            except Exception:
+                                pass
+                            if not removed and hasattr(game_ref, 'boss') and target is getattr(game_ref, 'boss') and getattr(target, 'hp', 1) <= 0:
+                                if hasattr(game_ref, 'running'):
+                                    game_ref.running = False
                 except Exception:
                     pass
             elif hasattr(target, 'hp'):
-                target.hp -= damage
+                try:
+                    prev = getattr(target, 'hp', 0)
+                    target.hp = max(0, prev - int(damage))
+                    # 尝试作为敌人发事件
+                    try:
+                        publish_event('enemy_damaged', {'enemy': target, 'amount': max(0, prev - target.hp), 'hp_before': prev, 'hp_after': target.hp})
+                    except Exception:
+                        pass
+                    if target.hp <= 0 and game is not None:
+                        if hasattr(game, '_handle_enemy_death'):
+                            game._handle_enemy_death(target)
+                        else:
+                            try:
+                                publish_event('enemy_died', {'enemy': target, 'scene_changed': False})
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
                 _log(game, f"{self} 使用战吼效果对目标造成 {damage} 点伤害")
         else:
             _log(game, f"{self} 战吼缺少目标")
@@ -194,27 +224,57 @@ class CombinedCard(Card):
             if hasattr(target, 'take_damage'):
                 died = target.take_damage(damage)
                 _log(game, f"{self} 使用战吼效果对 {target} 造成 {damage} 点伤害")
+                # 统一死亡处理
                 game_ref = game
                 try:
                     if died and game_ref is not None:
-                        removed = False
-                        if hasattr(game_ref, 'enemies') and isinstance(getattr(game_ref, 'enemies'), list):
-                            if target in game_ref.enemies:
-                                target.on_death(game_ref)
-                                game_ref.enemies.remove(target)
-                                removed = True
-                        if not removed and hasattr(game_ref, 'enemy_zone') and isinstance(getattr(game_ref, 'enemy_zone'), list):
-                            if target in game_ref.enemy_zone:
-                                target.on_death(game_ref)
-                                game_ref.enemy_zone.remove(target)
-                                removed = True
-                        if not removed and hasattr(game_ref, 'boss') and target is getattr(game_ref, 'boss') and getattr(target, 'hp', 1) <= 0:
-                            if hasattr(game_ref, 'running'):
-                                game_ref.running = False
+                        if hasattr(game_ref, '_handle_enemy_death'):
+                            game_ref._handle_enemy_death(target)
+                        else:
+                            removed = False
+                            if hasattr(game_ref, 'enemies') and isinstance(getattr(game_ref, 'enemies'), list):
+                                if target in game_ref.enemies:
+                                    try:
+                                        target.on_death(game_ref)
+                                    except Exception:
+                                        pass
+                                    game_ref.enemies.remove(target)
+                                    removed = True
+                            if not removed and hasattr(game_ref, 'enemy_zone') and isinstance(getattr(game_ref, 'enemy_zone'), list):
+                                if target in game_ref.enemy_zone:
+                                    try:
+                                        target.on_death(game_ref)
+                                    except Exception:
+                                        pass
+                                    game_ref.enemy_zone.remove(target)
+                                    removed = True
+                            try:
+                                publish_event('enemy_died', {'enemy': target, 'scene_changed': False})
+                            except Exception:
+                                pass
+                            if not removed and hasattr(game_ref, 'boss') and target is getattr(game_ref, 'boss') and getattr(target, 'hp', 1) <= 0:
+                                if hasattr(game_ref, 'running'):
+                                    game_ref.running = False
                 except Exception:
                     pass
             elif hasattr(target, 'hp'):
-                target.hp -= damage
+                try:
+                    prev = getattr(target, 'hp', 0)
+                    target.hp = max(0, prev - int(damage))
+                    try:
+                        publish_event('enemy_damaged', {'enemy': target, 'amount': max(0, prev - target.hp), 'hp_before': prev, 'hp_after': target.hp})
+                    except Exception:
+                        pass
+                    if target.hp <= 0 and game is not None:
+                        if hasattr(game, '_handle_enemy_death'):
+                            game._handle_enemy_death(target)
+                        else:
+                            try:
+                                publish_event('enemy_died', {'enemy': target, 'scene_changed': False})
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
                 _log(game, f"{self} 使用战吼效果对目标造成 {damage} 点伤害")
         else:
             _log(game, f"{self} 战吼缺少目标")

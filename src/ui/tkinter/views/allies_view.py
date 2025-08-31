@@ -78,6 +78,11 @@ class AlliesView:
                         ANIM.cancel_widget_anims(wrap)
                     except Exception:
                         pass
+                    # 立即销毁控件，避免在下一次渲染前残留
+                    try:
+                        wrap.destroy()
+                    except Exception:
+                        pass
                     try:
                         self.app.card_wraps.pop(idx, None)
                     except Exception:
@@ -95,7 +100,11 @@ class AlliesView:
                     except Exception:
                         pass
                     self._pending_render = False
-                    self._schedule_render()
+                    # 立即重渲染，确保上移补齐立刻可见
+                    try:
+                        self._render_now()
+                    except Exception:
+                        self._schedule_render()
                 else:
                     # 更新文本
                     atk = int(getattr(card, 'get_total_attack')() if hasattr(card, 'get_total_attack') else getattr(card, 'attack', 0))
@@ -277,6 +286,20 @@ class AlliesView:
         import tkinter as tk
         from tkinter import ttk
         from .. import animations as ANIM
+        # capture old positions for slide animation
+        old_pos: dict[object, tuple[int,int]] = {}
+        try:
+            for idx, wrap in (getattr(self.app, 'card_wraps', {}) or {}).items():
+                try:
+                    inner = next((ch for ch in wrap.winfo_children() if hasattr(ch, '_model_ref')), None)
+                    if inner is None:
+                        continue
+                    x = int(wrap.winfo_rootx()); y = int(wrap.winfo_rooty())
+                    old_pos[getattr(inner, '_model_ref')] = (x, y)
+                except Exception:
+                    pass
+        except Exception:
+            old_pos = {}
         # clear
         for w in list(container.winfo_children()):
             try:
@@ -323,42 +346,87 @@ class AlliesView:
             except Exception:
                 pass
             return
+        # 确保容器可拉伸，便于 spacer 生效
+        try:
+            container.grid_columnconfigure(0, weight=1)
+        except Exception:
+            pass
         members = list(board)[:15]
-        cols, rows = 3, 5
-        grid = [[None for _ in range(cols)] for _ in range(rows)]
-        for idx, m in enumerate(members):
-            r = idx // cols
-            c = idx % cols
-            grid[r][c] = m
+        cols = 3
+        # 仅渲染包含成员的行，并将成员向左对齐
+        import math
+        total = len(members)
+        rows = min(5, max(1, math.ceil(total / cols)))
         for r_idx in range(rows):
+            row_items = members[r_idx*cols : (r_idx+1)*cols]
+            if not row_items:
+                continue
             row_f = ttk.Frame(container)
             row_f.grid(row=r_idx, column=0, sticky='ew', pady=(2, 2))
+            # 右对齐：左侧拉伸、右侧不拉伸 -> 使本行内容整体靠右
             row_f.grid_columnconfigure(0, weight=1)
-            row_f.grid_columnconfigure(cols + 1, weight=1)
+            row_f.grid_columnconfigure(cols + 1, weight=0)
             inner_row = ttk.Frame(row_f)
-            inner_row.grid(row=0, column=1, sticky='ew')
-            for c in range(cols):
-                m = grid[r_idx][c]
-                m_index = r_idx * cols + c + 1
-                # 若启用体力展示，保证卡片最小高度，避免体力行被裁切
-                _h = self.app.CARD_H
+            inner_row.grid(row=0, column=1, sticky='e')
+            # 创建固定锚点（3列），卡片放入对应锚点中，行内呈现 321/654/... 模式
+            anchors = []
+            # 若启用体力展示，保证卡片最小高度，避免体力行被裁切
+            _h = self.app.CARD_H
+            try:
+                stc = getattr(self.app, '_stamina_cfg', {}) or {}
+                if stc.get('enabled', True):
+                    _h = max(int(_h), 120)
+            except Exception:
+                pass
+            for c_idx in range(cols):
+                a = tk.Frame(inner_row, width=self.app.CARD_W, height=_h)
                 try:
-                    stc = getattr(self.app, '_stamina_cfg', {}) or {}
-                    if stc.get('enabled', True):
-                        # 缩小卡片高度阈值，仅保证不裁切体力行
-                        _h = max(int(_h), 120)
+                    a.grid_propagate(False)
                 except Exception:
                     pass
-                wrap = tk.Frame(inner_row, highlightthickness=self.app._border_default, highlightbackground="#cccccc", width=self.app.CARD_W, height=_h)
+                a.grid(row=0, column=c_idx, padx=2, sticky='n')
+                anchors.append(a)
+            # 确保锚点坐标已计算
+            try:
+                self.app.root.update_idletasks()
+            except Exception:
+                pass
+            for j, m in enumerate(row_items):
+                # 右对齐且行内顺序反转（视觉 321/654/...）：把第 j 个放到最右侧再向左推
+                c = cols - 1 - j
+                m_index = r_idx * cols + j + 1  # 索引保持与数据顺序一致
+                if m is None:
+                    continue
+                wrap = tk.Frame(anchors[c], highlightthickness=self.app._border_default, highlightbackground="#cccccc", width=self.app.CARD_W, height=_h)
                 try:
                     wrap.pack_propagate(False)
                 except Exception:
                     pass
-                has_member = m is not None
-                if has_member:
-                    inner = self._create_character_card(wrap, m, m_index)
-                    inner.pack(fill=tk.BOTH, expand=True)
-                wrap.grid(row=0, column=c, padx=2, sticky='n')
+                inner = self._create_character_card(wrap, m, m_index)
+                inner.pack(fill=tk.BOTH, expand=True)
+                # 若开启滑动动画且有旧位置，则从旧位置滑到新锚点；否则直接放入锚点
+                def _final_pack(wrp=wrap, anc=anchors[c]):
+                    try:
+                        wrp.pack(fill=tk.BOTH, expand=True)
+                    except Exception:
+                        pass
+                try:
+                    # 开关：settings.anim_cfg().slide.enabled / slide_enabled
+                    slide_enabled = False
+                    try:
+                        from src import settings as S
+                        cfg = (S.anim_cfg() or {}).get('slide') or {}
+                        slide_enabled = bool(cfg.get('enabled', False) or cfg.get('slide_enabled', False))
+                    except Exception:
+                        slide_enabled = False
+                    start = old_pos.get(m)
+                    if slide_enabled and start:
+                        tx = int(anchors[c].winfo_rootx()); ty = int(anchors[c].winfo_rooty())
+                        ANIM.slide_to(self.app, wrap, x0=start[0], y0=start[1], x1=tx, y1=ty, duration_ms=150, steps=12, on_done=_final_pack)
+                    else:
+                        _final_pack()
+                except Exception:
+                    _final_pack()
                 def bind_all(w):
                     # 装备按钮不绑定操作栏行为
                     if getattr(w, '_is_equipment_slot', False):
@@ -369,8 +437,8 @@ class AlliesView:
                             self.app.selection.on_ally_click(idx)
                         except Exception:
                             pass
-                    if has_member:
-                        w.bind('<Button-1>', _on_select)
+                    has_member = True
+                    w.bind('<Button-1>', _on_select)
                     # 根据设置决定触发方式
                     trig = (getattr(self.app, '_ops_popup_cfg', {}) or {}).get('trigger', 'click')
                     if has_member and str(trig).lower() == 'click':
@@ -419,8 +487,7 @@ class AlliesView:
                     for ch in getattr(w, 'winfo_children', lambda: [])():
                         bind_all(ch)
                 bind_all(wrap)
-                if has_member:
-                    self.app.card_wraps[m_index] = wrap
+                self.app.card_wraps[m_index] = wrap
 
     def _create_character_card(self, parent, m, m_index: int):
         from .. import cards as tk_cards

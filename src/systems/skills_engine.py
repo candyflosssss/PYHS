@@ -233,6 +233,103 @@ def skill_power_slam(game, src, tgt) -> Tuple[bool, str]:
     return True, '力量猛击 完成'
 
 
+def skill_destiny(game, src, tgt) -> Tuple[bool, str]:
+    """命运：对单体进行最多10次优势命中检定，若任意一次命中，则造成等同于目标当前生命的伤害（通常为处决）。"""
+    if tgt is None:
+        return False, '未选择目标'
+    try:
+        from src.systems.dnd_rules import to_hit_roll
+    except Exception:
+        to_hit_roll = None
+    # 若没有 to_hit 模块，直接执行处决性伤害
+    if to_hit_roll is None:
+        prev = getattr(tgt, 'hp', 0)
+        try:
+            dead = tgt.take_damage(prev)
+        except Exception:
+            try:
+                tgt.hp = 0
+                dead = True
+            except Exception:
+                dead = False
+        game.log({'type': 'skill', 'text': f"{src} 使用 命运 处决 {getattr(tgt,'name',tgt)}", 'meta': {'auto': True, 'hp_before': prev}})
+        if dead and tgt in getattr(game, 'enemies', []):
+            changed = game._handle_enemy_death(tgt)
+            if changed:
+                return True, '命运 完成'
+        return True, '命运 完成'
+
+    # 有命中规则：做10次优势检定，命中即处决
+    att = game._to_character_sheet(src)
+    dfn = game._to_character_sheet(tgt)
+    rolls = []
+    hit_any = False
+    for _ in range(10):
+        th = to_hit_roll(att, dfn, use_str=True, advantage=True)
+        th = game._enrich_to_hit(th, att, dfn, weapon_bonus=0, is_proficient=False, use_str=True, defender_entity=tgt)
+        rolls.append({'roll': th.get('roll'), 'total': th.get('total'), 'needed': th.get('needed'), 'hit': th.get('hit')})
+        if th.get('hit'):
+            hit_any = True
+            break
+    if not hit_any:
+        game.log({'type': 'skill', 'text': f"{src} 的 命运 未命中 {getattr(tgt,'name',tgt)}（10次优势）", 'meta': {'rolls': rolls}})
+        return True, '未命中'
+    # 命中：造成等同于目标当前生命的伤害
+    prev = getattr(tgt, 'hp', 0)
+    dead = False
+    try:
+        dead = tgt.take_damage(prev)
+    except Exception:
+        try:
+            tgt.hp = 0
+            dead = True
+        except Exception:
+            dead = False
+    dealt = max(0, prev - getattr(tgt, 'hp', prev))
+    game.log({'type': 'skill', 'text': f"{src} 的 命运 命中 {getattr(tgt,'name',tgt)}，造成 {dealt} 处决伤害", 'meta': {'rolls': rolls, 'execute': True}})
+    if dead and tgt in getattr(game, 'enemies', []):
+        changed = game._handle_enemy_death(tgt)
+        if changed:
+            return True, '命运 完成'
+    return True, '命运 完成'
+
+
+def skill_touch_of_undeath(game, src, tgt) -> Tuple[bool, str]:
+    """亡灵之触：召唤一个骷髅（六维皆10，体力1），装备3攻锈蚀短剑与3防破旧木盾，总攻3、防3。"""
+    try:
+        from src.core.cards import NormalCard
+        from src.systems.equipment_system import WeaponItem, ShieldItem
+    except Exception:
+        return False, '召唤失败（模块缺失）'
+    # 创建基础骷髅：基础攻设为0，通过武器提供3攻
+    sk = NormalCard(0, 1, name='骷髅', tags=['undead'])
+    try:
+        sk.dnd = {'level': 1, 'attrs': {'str': 10, 'dex': 10, 'con': 10, 'int': 10, 'wis': 10, 'cha': 10}, 'bonuses': {}}
+    except Exception:
+        pass
+    # 装备：锈蚀短剑(+3攻)与破旧木盾(+3防)
+    try:
+        sword = WeaponItem('锈蚀短剑', '破旧且迟钝的短剑', 30, attack=3)
+        shield = ShieldItem('破旧木盾', '破旧的木盾，仍可提供些许防护', 30, defense=3)
+        sk.equipment.equip(sword, game=game)
+        sk.equipment.equip(shield, game=game)
+    except Exception:
+        pass
+    # 允许普攻
+    sk.can_attack = True
+    # 放入我方棋盘
+    try:
+        board = getattr(game.player, 'board', [])
+        if len(board) < 15:
+            board.append(sk)
+            game.log({'type': 'skill', 'text': f"{src} 的 亡灵之触 召唤了 {sk}", 'meta': {}})
+            return True, '召唤完成'
+        else:
+            return False, '棋盘已满，无法召唤'
+    except Exception:
+        return False, '召唤失败'
+
+
 def skill_bloodlust_priority(game, src, tgt) -> Tuple[bool, str]:
     import math
     try:
@@ -632,6 +729,9 @@ SKILLS: Dict[str, Callable] = {
     'trial_of_wisdom': skill_trial_of_wisdom,
     'execute_wounded': skill_execute_wounded,
     'fair_distribution': skill_fair_distribution,
+    # admin/new
+    'destiny': skill_destiny,
+    'touch_of_undeath': skill_touch_of_undeath,
 }
 
 

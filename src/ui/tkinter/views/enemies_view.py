@@ -75,6 +75,11 @@ class EnemiesView:
                         ANIM.cancel_widget_anims(wrap)
                     except Exception:
                         pass
+                    # 立即销毁控件，避免在下一次渲染前残留
+                    try:
+                        wrap.destroy()
+                    except Exception:
+                        pass
                     try:
                         self.app.enemy_card_wraps.pop(idx, None)
                     except Exception:
@@ -90,7 +95,11 @@ class EnemiesView:
                     except Exception:
                         pass
                     self._pending_render = False
-                    self._schedule_render()
+                    # 立即重渲染，确保上移补齐立刻可见
+                    try:
+                        self._render_now()
+                    except Exception:
+                        self._schedule_render()
                 else:
                     atk = int(getattr(enemy, 'attack', 0))
                     hp = int(getattr(enemy, 'hp', 0)); mhp = int(getattr(enemy, 'max_hp', hp))
@@ -166,6 +175,20 @@ class EnemiesView:
         import tkinter as tk
         from tkinter import ttk
         from .. import animations as ANIM
+        # capture old positions for slide animation
+        old_pos: dict[object, tuple[int,int]] = {}
+        try:
+            for idx, wrap in (getattr(self.app, 'enemy_card_wraps', {}) or {}).items():
+                try:
+                    inner = next((ch for ch in wrap.winfo_children() if hasattr(ch, '_model_ref')), None)
+                    if inner is None:
+                        continue
+                    x = int(wrap.winfo_rootx()); y = int(wrap.winfo_rooty())
+                    old_pos[getattr(inner, '_model_ref')] = (x, y)
+                except Exception:
+                    pass
+        except Exception:
+            old_pos = {}
         # clear
         for w in list(container.winfo_children()):
             try:
@@ -201,47 +224,92 @@ class EnemiesView:
             except Exception:
                 pass
             return
+        # 确保容器可拉伸，便于左右 spacer 生效
+        try:
+            container.grid_columnconfigure(0, weight=1)
+        except Exception:
+            pass
         members = list(enemies)[:15]
-        cols, rows_cnt = 3, 5
-        grid = [[None for _ in range(cols)] for _ in range(rows_cnt)]
-        for idx, e in enumerate(members):
-            r = idx // cols
-            c = idx % cols
-            grid[r][c] = e
+        cols = 3
+        import math
+        total = len(members)
+        rows_cnt = min(5, max(1, math.ceil(total / cols)))
+        # 创建各行与固定锚点（列）
+        anchors: list[list[tk.Frame]] = []
+        # 统一卡片最小高度（考虑体力槽）
+        _h = self.app.CARD_H
+        try:
+            stc = getattr(self.app, '_stamina_cfg', {}) or {}
+            if stc.get('enabled', True):
+                _h = max(int(_h), 120)
+        except Exception:
+            pass
         for r_idx in range(rows_cnt):
             row_f = ttk.Frame(container)
             row_f.grid(row=r_idx, column=0, sticky='ew', pady=(2, 2))
-            row_f.grid_columnconfigure(0, weight=1)
+            # 左对齐：左 spacer=0、右 spacer=1
+            row_f.grid_columnconfigure(0, weight=0)
             row_f.grid_columnconfigure(cols + 1, weight=1)
             inner_row = ttk.Frame(row_f)
-            inner_row.grid(row=0, column=1, sticky='ew')
-            for c in range(cols):
-                e = grid[r_idx][c]
-                e_index = r_idx * cols + c + 1
-                # 敌方卡片也可能显示体力，为避免裁切提高最小高度
-                _h = self.app.CARD_H
+            inner_row.grid(row=0, column=1, sticky='w')
+            row_anchors: list[tk.Frame] = []
+            for c_idx in range(cols):
+                a = tk.Frame(inner_row, width=self.app.CARD_W, height=_h)
                 try:
-                    stc = getattr(self.app, '_stamina_cfg', {}) or {}
-                    if stc.get('enabled', True):
-                        # 缩小卡片高度阈值，仅保证不裁切体力行
-                        _h = max(int(_h), 120)
+                    a.grid_propagate(False)
                 except Exception:
                     pass
-                wrap = tk.Frame(inner_row, highlightthickness=self.app._border_default, highlightbackground="#cccccc", width=self.app.CARD_W, height=_h)
+                a.grid(row=0, column=c_idx, padx=2, sticky='n')
+                row_anchors.append(a)
+            anchors.append(row_anchors)
+        # 确保锚点布局完成
+        try:
+            self.app.root.update_idletasks()
+        except Exception:
+            pass
+        # 将敌人按顺序 123/456/... 放入锚点（从上到下、从左到右），保证向上紧凑
+        for i, e in enumerate(members):
+            r = i // cols
+            c = i % cols
+            e_index = i + 1
+            if e is None:
+                continue
+            parent = anchors[r][c]
+            wrap = tk.Frame(parent, highlightthickness=self.app._border_default, highlightbackground="#cccccc", width=self.app.CARD_W, height=_h)
+            try:
+                wrap.pack_propagate(False)
+            except Exception:
+                pass
+            inner = self._create_enemy_card(wrap, e, e_index)
+            inner.pack(fill=tk.BOTH, expand=True)
+            def _final_pack(wrp=wrap, par=parent):
                 try:
-                    wrap.pack_propagate(False)
+                    wrp.pack(fill=tk.BOTH, expand=True)
                 except Exception:
                     pass
-                if e is not None:
-                    inner = self._create_enemy_card(wrap, e, e_index)
-                    inner.pack(fill=tk.BOTH, expand=True)
-                wrap.grid(row=0, column=c, padx=2, sticky='n')
-                def bind_all(w):
-                    w.bind('<Button-1>', lambda _e, idx=e_index: self.app.selection.on_enemy_click(idx))
-                    for ch in getattr(w, 'winfo_children', lambda: [])():
-                        bind_all(ch)
-                bind_all(wrap)
-                self.app.enemy_card_wraps[e_index] = wrap
+            try:
+                # 开关：settings.anim_cfg().slide.enabled / slide_enabled
+                slide_enabled = False
+                try:
+                    from src import settings as S
+                    cfg = (S.anim_cfg() or {}).get('slide') or {}
+                    slide_enabled = bool(cfg.get('enabled', False) or cfg.get('slide_enabled', False))
+                except Exception:
+                    slide_enabled = False
+                start = old_pos.get(e)
+                if slide_enabled and start:
+                    tx = int(parent.winfo_rootx()); ty = int(parent.winfo_rooty())
+                    ANIM.slide_to(self.app, wrap, x0=start[0], y0=start[1], x1=tx, y1=ty, duration_ms=150, steps=12, on_done=_final_pack)
+                else:
+                    _final_pack()
+            except Exception:
+                _final_pack()
+            def bind_all(w):
+                w.bind('<Button-1>', lambda _e, idx=e_index: self.app.selection.on_enemy_click(idx))
+                for ch in getattr(w, 'winfo_children', lambda: [])():
+                    bind_all(ch)
+            bind_all(wrap)
+            self.app.enemy_card_wraps[e_index] = wrap
 
     def _create_enemy_card(self, parent, e, e_index: int):
         from .. import cards as tk_cards

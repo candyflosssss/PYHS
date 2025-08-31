@@ -31,5 +31,11 @@
     {"name": "药草", "type": "material", "value": 1},
     {"name": "木棍"},
     {"name": "药草", "type": "material", "value": 2}
-  ]
+  ],
+  "inventory": {
+    "items": [
+      {"type":"weapon","name":"命运权杖","desc":"双手法杖，蕴含命运与亡灵之力","attack":20,"defense":20,
+       "two_handed":true,"slot":"left_hand","active_skills":["destiny","touch_of_undeath"]}
+    ]
+  }
 }

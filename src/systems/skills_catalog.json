@@ -46,6 +46,8 @@
     { "id": "mind_over_matter", "name_cn": "强于心智", "name_en": "Mind Over Matter", "desc": "用心智打击对手。", "spec": { "team": "enemy", "select": "single", "min_targets": 1, "max_targets": 1, "predicates": ["is_alive"] } },
     { "id": "trial_of_wisdom", "name_cn": "智慧试炼", "name_en": "Trial of Wisdom", "desc": "以智取胜的试炼。", "spec": { "team": "enemy", "select": "single", "min_targets": 1, "max_targets": 1, "predicates": ["is_alive"] } },
     { "id": "execute_wounded", "name_cn": "重伤补刀", "name_en": "Execute Wounded", "desc": "对重伤目标处决。", "spec": { "team": "enemy", "select": "single", "min_targets": 1, "max_targets": 1, "predicates": ["is_alive"] } },
-    { "id": "fair_distribution", "name_cn": "公平分配", "name_en": "Fair Distribution", "desc": "按总攻平分对群体伤害。", "spec": { "team": "enemy", "select": "aoe", "predicates": ["is_alive"] } }
+    { "id": "fair_distribution", "name_cn": "公平分配", "name_en": "Fair Distribution", "desc": "按总攻平分对群体伤害。", "spec": { "team": "enemy", "select": "aoe", "predicates": ["is_alive"] } },
+    { "id": "destiny", "name_cn": "命运", "name_en": "Destiny", "desc": "10次优势命中，命中则对目标造成等同于其当前生命的伤害。", "spec": { "team": "enemy", "select": "single", "min_targets": 1, "max_targets": 1, "predicates": ["is_alive","can_be_attacked"] } },
+    { "id": "touch_of_undeath", "name_cn": "亡灵之触", "name_en": "Touch of Undeath", "desc": "召唤1个1生命的骷髅随从，攻3防3。", "spec": { "team": "ally", "select": "none" } }
   ]
 }

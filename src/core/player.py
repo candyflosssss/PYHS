@@ -63,7 +63,37 @@ class Player:
 
     def check_deaths(self):
         """检查并移除死亡的卡牌"""
-        self.board = [card for card in self.board if card.hp > 0]
+        try:
+            dead = [card for card in (self.board or []) if getattr(card, 'hp', 0) <= 0]
+        except Exception:
+            dead = []
+        if dead:
+            # 先发布 will_die（便于 UI 做预处理/取消动画）
+            try:
+                from src.core.events import publish as publish_event
+                for c in dead:
+                    try:
+                        publish_event('card_will_die', {'card': c})
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        # 实际移除
+        try:
+            self.board = [card for card in (self.board or []) if getattr(card, 'hp', 0) > 0]
+        except Exception:
+            self.board = [card for card in self.board if card and getattr(card, 'hp', 0) > 0]
+        if dead:
+            # 再发布 died（视图据此重渲染并销毁控件）
+            try:
+                from src.core.events import publish as publish_event
+                for c in dead:
+                    try:
+                        publish_event('card_died', {'card': c})
+                    except Exception:
+                        pass
+            except Exception:
+                pass
 
     def take_damage(self, damage):
         """受到伤害"""

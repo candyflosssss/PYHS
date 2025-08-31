@@ -1211,6 +1211,8 @@ class GameTkApp:
 
 	def _on_close(self):
 		"""窗口关闭：取消事件订阅、卸载视图并销毁窗口。"""
+		# 进入抑制期，防止子视图在销毁过程中再次调度 after/render
+		setattr(self, '_suspend_ui_updates', True)
 		# 取消订阅并关闭
 		try:
 			# unmount views first
@@ -1237,12 +1239,18 @@ class GameTkApp:
 				pass
 		except Exception:
 			pass
-		# 取消 root.after 调度，尽量避免 destroy 时的 deletecommand 异常
+		# 取消已知的 after 调度，尽量避免 destroy 时的 deletecommand 异常
 		try:
-			self.root.after_cancel(getattr(self, '_scene_overlay_bind_id', None))
+			bid = getattr(self, '_scene_overlay_bind_id', None)
+			if bid:
+				self.root.after_cancel(bid)
 		except Exception:
 			pass
-		self.root.destroy()
+		# 容错调用 destroy，吞掉 TclError
+		try:
+			self.root.destroy()
+		except Exception:
+			pass
 
 
 def run_tk(player_name: str = "玩家", initial_scene: Optional[str] = None):

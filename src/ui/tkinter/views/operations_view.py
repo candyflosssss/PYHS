@@ -559,22 +559,34 @@ class OperationsView:
             pass
 
     def hide_popup(self, force: bool = False):
-        if not self._popup:
-            return
-        if self._hide_job and not force:
-            try:
-                self.app.root.after_cancel(self._hide_job)
-            except Exception:
-                pass
-            self._hide_job = None
+        # 总是先取消挂起的延迟隐藏
         try:
-            self._popup.withdraw()
+            if self._hide_job:
+                self.app.root.after_cancel(self._hide_job)
         except Exception:
             pass
+        self._hide_job = None
+        if not self._popup:
+            return
         if force:
-            # 强制隐藏时清空索引/锚点，便于点击同一角色时重新弹出
+            # 关闭并销毁弹窗，避免关闭应用时残留 Tcl 命令
             try:
+                self._popup.destroy()  # type: ignore[attr-defined]
+            except Exception:
+                try:
+                    self._popup.withdraw()
+                except Exception:
+                    pass
+            # 清空引用，便于 GC
+            try:
+                self._popup = None
                 self._popup_for_index = None
                 self._popup_anchor = None
             except Exception:
                 pass
+            return
+        # 非强制：仅隐藏
+        try:
+            self._popup.withdraw()
+        except Exception:
+            pass

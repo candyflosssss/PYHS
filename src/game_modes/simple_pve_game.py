@@ -24,6 +24,8 @@ class SimplePvEGame:
         self.player = Player(player_name, is_me=True, game=self)
         self.turn = 1
         self.running = True
+        # 事件订阅句柄
+        self._subs = []
         self.enemies: ObservableList = ObservableList(
             [],
             on_add='enemy_added', on_remove='enemy_removed', on_clear='enemies_cleared', on_reset='enemies_reset', on_change='enemies_changed',
@@ -68,6 +70,12 @@ class SimplePvEGame:
         try:
             from src.systems import passives_system as PS
             PS.setup()
+        except Exception:
+            pass
+        # 订阅我方随从死亡事件：触发亡语并从棋盘安全移除
+        try:
+            from src.core.events import subscribe as subscribe_event
+            self._subs.append(('card_died', subscribe_event('card_died', self._on_card_died)))
         except Exception:
             pass
         # skill dispatch map
@@ -258,6 +266,25 @@ class SimplePvEGame:
         # 再次裁剪，确保不超过 15
         if len(self.player.board) > 15:
             self.player.board[:] = self.player.board[:15]
+
+        # 初始背包：可选字段 inventory/items，支持与 _equip_from_json 相似的条目结构
+        try:
+            inv_spec = data.get('inventory') or data.get('items')
+            if isinstance(inv_spec, dict) and 'items' in inv_spec:
+                inv_list = inv_spec.get('items')
+            elif isinstance(inv_spec, list):
+                inv_list = inv_spec
+            else:
+                inv_list = []
+            for it in inv_list:
+                item_obj, qty = self._item_from_json(it)
+                if item_obj is not None and qty > 0:
+                    try:
+                        self.player.add_item(item_obj, qty)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
         # 通知资源区已重置（UI 只订阅 resource_changed）
         try:
@@ -512,8 +539,7 @@ class SimplePvEGame:
             changed = self._handle_enemy_death(e)
             if changed:
                 return True, '攻击成功'
-        if m.hp <= 0:
-            self.player.board.remove(m)
+        # 我方随从死亡的移除改由 card_died 事件集中处理
         # 若清场且存在 on_clear 兜底切换，则尝试执行
         if not self.enemies:
             if self._check_on_clear_transition():
@@ -594,6 +620,30 @@ class SimplePvEGame:
         except Exception:
             pass
         return int(default)
+
+    # --- 盟友死亡集中处理 ---
+    def _on_card_died(self, _evt: str, payload: dict):
+        """当任意 Card 死亡时：若在我方棋盘上，则触发其亡语（若有）并安全移除。
+        说明：Card.take_damage 会同步发布该事件，因此无需在各处手动 remove，避免重复移除。
+        """
+        try:
+            c = (payload or {}).get('card')
+            if not c:
+                return
+            # 触发亡语（若卡牌实现了 on_death(game, owner)）
+            try:
+                if hasattr(c, 'on_death'):
+                    c.on_death(self, self.player)
+            except Exception:
+                pass
+            # 从棋盘安全移除
+            try:
+                if c in self.player.board:
+                    self.player.board.remove(c)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def _has_dual_wield(self, entity) -> bool:
         try:
@@ -1690,6 +1740,11 @@ class SimplePvEGame:
                 psv = it.get('passives') or {}
                 if t == 'weapon':
                     w = WeaponItem(str(name), str(desc), dur, attack=atk, slot_type=str(slot), is_two_handed=two, active_skills=act_sk, passives=psv)
+                    # 允许武器带防御（供双手武器提供防御加成）
+                    try:
+                        w.defense = int(dfn)
+                    except Exception:
+                        pass
                     card.equipment.equip(w, game=self)
                 elif t == 'armor':
                     a = ArmorItem(str(name), str(desc), dur, defense=dfn, slot_type='armor', active_skills=act_sk, passives=psv)
@@ -1705,3 +1760,51 @@ class SimplePvEGame:
                 continue
 
     #（无自动配装函数）
+
+    # --- 场景初始背包物品解析 ---
+    def _item_from_json(self, it):
+        """根据场景 JSON 条目创建物品对象及数量。
+        支持：
+        - 装备：type in weapon/armor/shield（透传 active_skills/passives、two_handed、防御等）
+        - 其他：回退为 MaterialItem/ConsumableItem（简单占位）
+        可选数量字段：quantity/qty/count，默认 1。
+        """
+        try:
+            from src.systems.inventory import ConsumableItem, MaterialItem
+            from src.systems.equipment_system import WeaponItem, ArmorItem, ShieldItem
+        except Exception:
+            return None, 0
+        if not isinstance(it, dict):
+            return None, 0
+        qty = int(it.get('quantity') or it.get('qty') or it.get('count') or 1)
+        t = str(it.get('type', '') or '').lower()
+        name = it.get('name') or '物品'
+        desc = it.get('desc') or it.get('description') or '场景初始物品'
+        dur = int(it.get('durability', 100))
+        atk = int(it.get('attack', it.get('atk', it.get('value', 0))))
+        dfn = int(it.get('defense', it.get('def', it.get('value', 0))))
+        slot = it.get('slot') or ('armor' if t == 'armor' else ('left_hand' if it.get('two_handed') else 'right_hand'))
+        two = bool(it.get('two_handed', it.get('twoHanded', False)))
+        act_sk = it.get('active_skills') or []
+        psv = it.get('passives') or {}
+        try:
+            if t == 'weapon':
+                w = WeaponItem(str(name), str(desc), dur, attack=atk, slot_type=str(slot), is_two_handed=two, active_skills=act_sk, passives=psv)
+                try:
+                    w.defense = int(dfn)
+                except Exception:
+                    pass
+                return w, qty
+            if t == 'armor':
+                a = ArmorItem(str(name), str(desc), dur, defense=dfn, slot_type='armor', active_skills=act_sk, passives=psv)
+                return a, qty
+            if t == 'shield':
+                s = ShieldItem(str(name), str(desc), dur, defense=dfn, attack=atk, active_skills=act_sk, passives=psv)
+                return s, qty
+            # 其他类型：尝试 consumable/material
+            if t == 'potion' or t == 'consumable':
+                return ConsumableItem(str(name), str(desc), max_stack=8), max(1, qty)
+            # 默认材料
+            return MaterialItem(str(name), str(desc), max_stack=16), max(1, qty)
+        except Exception:
+            return None, 0
