@@ -22,9 +22,9 @@
   ],
   "type": "main",
   "enemies": [
-    {"name": "通往幽暗森林", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "forest_entrance.json", "preserve_board": true}},
-    {"name": "通往古代遗迹", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "ruins_gate.json", "preserve_board": true}},
-    {"name": "通往冰封高地", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "highlands_path.json", "preserve_board": true}},
+    {"name": "幽暗森林", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "forest_entrance.json", "preserve_board": true}},
+    {"name": "古代遗迹", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "ruins_gate.json", "preserve_board": true}},
+    {"name": "冰封高地", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "highlands_path.json", "preserve_board": true}},
     {"name": "终焉城塞", "attack": 0, "hp": 1, "on_death": {"action": "transition", "to": "final_boss_citadel.json", "preserve_board": true}}
   ],
   "resources": [

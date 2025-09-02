@@ -231,9 +231,9 @@ class GameTkApp:
 		rest = parts[1:]
 		alias = {
 			'attack': 'a', 'atk': 'a', 'a': 'a',
-			'equip': 'eq', 'eq': 'eq',
-			'unequip': 'uneq', 'uneq': 'uneq',
-			'take': 't', 't': 't',
+			'equip': 'equip', 'eq': 'equip',
+			'unequip': 'unequip', 'uneq': 'unequip',
+			'take': 'take', 't': 'take',
 			'use': 'use', 'u': 'use',
 			'craft': 'craft', 'c': 'craft',
 			'end': 'end',

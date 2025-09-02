@@ -1,16 +1,15 @@
 import random
 from src.ui import colors as C
-from .combatant import Combatant
-from src.core.events import publish as publish_event
+from .base_entity import BaseEntity
+from src.core.event_manager import safe_publish_event
 
-class Card(Combatant):
+class Card(BaseEntity):
     weight = 1  # 抽牌权重
 
     def __init__(self, atk, hp):
         super().__init__(atk, hp)
         self.atk = atk  # 兼容旧字段
         self.attacks = 0
-        # equipment/tags/passive/skills 已在 Combatant 初始化
 
     def take_damage(self, damage):
         """处理卡牌受到伤害（考虑防御力）"""
@@ -18,19 +17,12 @@ class Card(Combatant):
         actual_damage = max(1, damage - defense)
         prev = self.hp
         self.hp -= actual_damage
-        try:
-            publish_event('card_damaged', {'card': self, 'amount': actual_damage, 'hp_before': prev, 'hp_after': self.hp})
-        except Exception:
-            pass
+        
+        safe_publish_event('card_damaged', {'card': self, 'amount': actual_damage, 'hp_before': prev, 'hp_after': self.hp})
+        
         if self.hp <= 0:
-            try:
-                publish_event('card_will_die', {'card': self})
-            except Exception:
-                pass
-            try:
-                publish_event('card_died', {'card': self})
-            except Exception:
-                pass
+            safe_publish_event('card_will_die', {'card': self})
+            safe_publish_event('card_died', {'card': self})
 
     def on_play(self, game, owner, target=None):
         pass
@@ -39,12 +31,10 @@ class Card(Combatant):
         pass
 
     def heal(self, amount):
+        """治疗，恢复生命值"""
         prev = self.hp
         self.hp = min(self.hp + amount, self.max_hp)
-        try:
-            publish_event('card_healed', {'card': self, 'amount': int(amount), 'hp_before': prev, 'hp_after': self.hp})
-        except Exception:
-            pass
+        safe_publish_event('card_healed', {'card': self, 'amount': int(amount), 'hp_before': prev, 'hp_after': self.hp})
 
     def sync_state(self):
         windfury = getattr(self, 'windfury', False)

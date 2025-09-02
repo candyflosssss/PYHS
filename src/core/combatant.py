@@ -1,103 +1,18 @@
 from __future__ import annotations
 
-from src.systems.equipment_system import EquipmentSystem
+from src.core.base_entity import BaseEntity
 
 
-class Combatant:
+class Combatant(BaseEntity):
     """通用战斗单位父类（随从/敌人共用）
 
-    - 统一字段：base_atk, hp, max_hp, can_attack, equipment, tags, passive, skills
-    - 统一方法：get_total_attack/defense, attack/defense 属性, heal
+    - 继承自 BaseEntity，获得统一的属性和方法
     - 注意：take_damage 留给子类自定义返回值（随从不返回、敌人返回是否死亡）
     """
 
     def __init__(self, atk: int, hp: int, *, name: str | None = None, profession: str | None = None, race: str | None = None):
-        self.base_atk = int(atk)
-        self.hp = int(hp)
-        self.max_hp = int(hp)
-        self.can_attack = False
-        self.equipment = EquipmentSystem()
-        try:
-            # 让装备系统能在事件中回溯归属对象
-            setattr(self.equipment, 'owner', self)
-        except Exception:
-            pass
-        # 可选拓展字段（默认空）
-        self.tags = []          # e.g. ["healer","mage","tank"]
-        self.passive = {}       # e.g. {"no_counter":true}
-        self.skills = []        # e.g. [{"name":"治疗","heal":4}]
-        # DnD 数据（可选）：{'level':1,'attrs':{'str':10,...},'ac':None,'bonuses':{}}
-        self.dnd = None
-        # 职业与种族字段（可用于分配默认技能）
-        self.profession = profession
-        self.race = race
-        if name:
-            n = str(name)
-            # 同时设置 display_name 与 name，兼容旧代码访问 .name
-            setattr(self, 'display_name', n)
-            setattr(self, 'name', n)
-        # 体力系统：由 settings.rules.stamina.base 控制回合上限
-        try:
-            from src import settings as S
-            base = int(getattr(S, 'stamina_base')())
-        except Exception:
-            base = 3
-        self.stamina_max = int(base)
-        self.stamina = int(base)
+        super().__init__(atk, hp, name=name, profession=profession, race=race)
 
-    def add_tag(self, tag: str):
-        try:
-            t = str(tag).lower()
-            if t not in self.tags:
-                self.tags.append(t)
-        except Exception:
-            pass
-
-    def remove_tag(self, tag: str):
-        try:
-            t = str(tag).lower()
-            if t in self.tags:
-                self.tags.remove(t)
-        except Exception:
-            pass
-
-    # 动态数值（含装备）
-    def get_total_attack(self) -> int:
-        return int(self.base_atk) + int(self.equipment.get_total_attack() if self.equipment else 0)
-
-    def get_total_defense(self) -> int:
-        return int(self.equipment.get_total_defense() if self.equipment else 0)
-
-    @property
-    def attack(self) -> int:
-        return self.get_total_attack()
-
-    @property
-    def defense(self) -> int:
-        return self.get_total_defense()
-
-    def heal(self, amount: int):
-        self.hp = min(self.hp + int(amount), self.max_hp)
-
-    # --- stamina helpers ---
-    def refill_stamina(self):
-        """回合开始回满体力。"""
-        self.stamina = int(self.stamina_max)
-        try:
-            from src.core.events import publish as publish_event
-            publish_event('stamina_changed', {'owner': self, 'stamina': self.stamina, 'stamina_max': self.stamina_max, 'reason': 'refill'})
-        except Exception:
-            pass
-
-    def spend_stamina(self, amount: int) -> bool:
-        """尝试消耗体力；不足则返回 False。"""
-        a = max(0, int(amount))
-        if self.stamina < a:
-            return False
-        self.stamina -= a
-        try:
-            from src.core.events import publish as publish_event
-            publish_event('stamina_changed', {'owner': self, 'stamina': self.stamina, 'stamina_max': self.stamina_max, 'reason': 'spend', 'amount': a})
-        except Exception:
-            pass
-        return True
+    def on_death(self, game=None):
+        """死亡时的回调，子类必须实现"""
+        pass

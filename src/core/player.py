@@ -1,5 +1,6 @@
 from .cards import draw_card, BattlecryCard, CombinedCard, WindfuryCard
 from src.systems.inventory import Inventory
+from src.core.event_manager import safe_publish_event
 
 class Player:
     def __init__(self, name, is_me=True, game=None, inventory_size=20):
@@ -31,11 +32,7 @@ class Player:
             self.board.append(card)
             self.hand.pop(card_idx)
             # 发布新增卡牌事件，便于 GUI 盟友区即时刷新
-            try:
-                from src.core.events import publish as publish_event
-                publish_event('card_added', {'card': card, 'owner': self})
-            except Exception:
-                pass
+            safe_publish_event('card_added', {'card': card, 'owner': self})
 
             # 统一触发 on_play
             try:
@@ -75,31 +72,18 @@ class Player:
             dead = []
         if dead:
             # 先发布 will_die（便于 UI 做预处理/取消动画）
+            for c in dead:
+                safe_publish_event('card_will_die', {'card': c})
+            
+            # 实际移除
             try:
-                from src.core.events import publish as publish_event
-                for c in dead:
-                    try:
-                        publish_event('card_will_die', {'card': c})
-                    except Exception:
-                        pass
+                self.board = [card for card in (self.board or []) if getattr(card, 'hp', 0) > 0]
             except Exception:
-                pass
-        # 实际移除
-        try:
-            self.board = [card for card in (self.board or []) if getattr(card, 'hp', 0) > 0]
-        except Exception:
-            self.board = [card for card in self.board if card and getattr(card, 'hp', 0) > 0]
-        if dead:
+                self.board = [card for card in self.board if card and getattr(card, 'hp', 0) > 0]
+            
             # 再发布 died（视图据此重渲染并销毁控件）
-            try:
-                from src.core.events import publish as publish_event
-                for c in dead:
-                    try:
-                        publish_event('card_died', {'card': c})
-                    except Exception:
-                        pass
-            except Exception:
-                pass
+            for c in dead:
+                safe_publish_event('card_died', {'card': c})
 
     def take_damage(self, damage):
         """受到伤害"""

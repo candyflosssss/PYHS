@@ -1,10 +1,17 @@
 {
+  "title": "默认场景",
   "board": [
-  {"name": "张伟", "atk": 8, "hp": 8, "profession": "warrior"},
-  {"name": "陈杰", "atk": 6, "hp": 14, "profession": "priest"}
+    {"name": "张伟", "atk": 8, "hp": 8, "profession": "warrior",
+     "equip": {"items": [
+       {"type": "weapon", "name": "铁剑", "attack": 3, "slot": "right_hand"}
+     ]}},
+    {"name": "陈杰", "atk": 6, "hp": 14, "profession": "priest",
+     "equip": {"items": [
+       {"type": "armor", "name": "布甲", "defense": 1}
+     ]}}
   ],
   "enemies": [
-  {"name": "未上锁的木门", "attack": 0, "hp": 2, "on_death": {"action": "transition", "to": "scene_2.json", "preserve_board": true}},
+    {"name": "未上锁的木门", "attack": 0, "hp": 2, "on_death": {"action": "transition", "to": "scene_2.json", "preserve_board": true}},
     {"name": "自定义盗贼", "attack": 2, "hp": 5,
      "drops": [
        {"name": "皮甲", "type": "armor", "value": 2},
@@ -14,7 +21,14 @@
     {"name": "骷髅"}
   ],
   "resources": [
-    {"name": "木剑"},
+    {"name": "木剑", "type": "weapon", "value": 2, "slot": "right_hand"},
+    {"name": "铁盾", "type": "shield", "value": 2},
+    {"name": "生命药水", "type": "potion", "value": 3},
     {"name": "自定义材料", "type": "material", "value": 4}
+  ],
+  "inventory_equipment": [
+    {"name": "备用长剑", "type": "weapon", "attack": 4, "slot": "right_hand"},
+    {"name": "备用护甲", "type": "armor", "defense": 3},
+    {"name": "备用盾牌", "type": "shield", "defense": 4}
   ]
 }
