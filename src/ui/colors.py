@@ -41,6 +41,7 @@ THEMES = {
         'friendly': FG_GREEN,
         'enemy': FG_YELLOW,
         'resource': FG_MAGENTA,
+    'skill': FG_BRIGHT_YELLOW,
         'success': FG_GREEN,
         'warning': FG_YELLOW,
         'error': FG_RED,
@@ -57,6 +58,7 @@ THEMES = {
         'friendly': '',
         'enemy': '',
         'resource': '',
+    'skill': '',
         'success': '',
         'warning': '',
         'error': '',
@@ -72,6 +74,7 @@ THEMES = {
         'friendly': FG_GREEN,
         'enemy': FG_BRIGHT_YELLOW,
         'resource': FG_BRIGHT_MAGENTA,
+    'skill': FG_BRIGHT_YELLOW,
         'success': FG_GREEN,
         'warning': FG_BRIGHT_YELLOW,
         'error': FG_RED,
@@ -131,6 +134,9 @@ def dim(s: str) -> str:
 
 def bold(s: str) -> str:
     return _style('bold', s)
+
+def skill(s: str) -> str:
+    return _style('skill', s)
 
 # 统计项专用颜色
 def stat_atk(s: str) -> str:

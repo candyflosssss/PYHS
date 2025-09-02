@@ -22,6 +22,7 @@ from . import ui_utils as U
 from .dialogs.equipment_dialog import EquipmentDialog
 from . import animations as ANIM
 from .views import EnemiesView, AlliesView, ResourcesView, OperationsView
+from .views.battlefield_view import BattlefieldView
 from .widgets.log_pane import LogPane
 from src.ui.targeting.specs import DEFAULT_SPECS, SkillTargetSpec
 from src.ui.targeting.fsm import TargetingEngine
@@ -285,6 +286,16 @@ class GameTkApp:
 				ops.hide_popup(force=True)
 		except Exception:
 			pass
+		# 在拆 UI 前先把上一动作的历史+信息区刷入日志，并清空 info，避免跨场景残留
+		try:
+			self._append_action_log()
+			if getattr(self, 'controller', None):
+				try:
+					self.controller.info = []
+				except Exception:
+					pass
+		except Exception:
+			pass
 		# 杀掉所有子 UI（容器内容与订阅），播放切换动画占位
 		try:
 			# 在展示过渡层前确保操作弹窗已隐藏，避免闪烁
@@ -305,6 +316,12 @@ class GameTkApp:
 				try:
 					self._bind_views_context()
 					self._build_children()
+					# 子 UI 重建后，先进行一次全量刷新，确保战场与资源数据已填充
+					try:
+						self.refresh_all(skip_info_log=True)
+					except Exception:
+						pass
+					# 等内容准备就绪后再移除过渡层，避免短暂空白闪烁
 					self._hide_scene_transition()
 				except Exception:
 					pass
@@ -330,6 +347,8 @@ class GameTkApp:
 		btns = ttk.Frame(wrapper)
 		btns.pack(fill=tk.X)
 		ttk.Button(btns, text="🎮 开始游戏", command=self._menu_start).pack(fill=tk.X)
+		# 存档选择（基于 %LOCALAPPDATA%/PYHS/save_*.json）
+		ttk.Button(btns, text="📁 选择存档", command=self._menu_choose_save).pack(fill=tk.X, pady=(6, 0))
 		ttk.Button(btns, text="✏️ 修改玩家名称", command=self._menu_rename).pack(fill=tk.X, pady=(6, 0))
 		ttk.Button(btns, text="🗺️ 选择地图组", command=self._menu_choose_pack).pack(fill=tk.X, pady=(6, 0))
 		ttk.Button(btns, text="🔄 重新载入场景列表", command=self._menu_refresh_packs).pack(fill=tk.X, pady=(6, 0))
@@ -439,6 +458,84 @@ class GameTkApp:
 		ttk.Button(btns, text="确定", command=on_confirm).pack(side=tk.LEFT, expand=True, fill=tk.X)
 		ttk.Button(btns, text="取消", command=win.destroy).pack(side=tk.RIGHT, expand=True, fill=tk.X)
 
+	def _list_saves(self) -> list[dict]:
+		"""扫描用户目录中的存档文件，返回 [{name, path, label}]。"""
+		items: list[dict] = []
+		try:
+			udir = CFG.user_data_dir()
+			for fn in os.listdir(udir):
+				if not (fn.startswith('save_') and fn.endswith('.json')):
+					continue
+				path = os.path.join(udir, fn)
+				name = None
+				try:
+					with open(path, 'r', encoding='utf-8') as f:
+						data = json.load(f)
+						name = (data.get('player') or {}).get('name')
+				except Exception:
+					pass
+				if not name:
+					# 从文件名推断
+					base = os.path.splitext(fn)[0]
+					name = base.replace('save_', '')
+				label = f"{name}  ({fn})"
+				items.append({'name': name, 'path': path, 'label': label})
+		except Exception:
+			pass
+		return items
+
+	def _menu_choose_save(self):
+		"""弹出存档选择/新建对话框，并更新当前玩家名称。"""
+		win = tk.Toplevel(self.root)
+		win.title("选择存档")
+		win.transient(self.root)
+		win.grab_set()
+		frm = ttk.Frame(win, padding=10)
+		frm.pack(fill=tk.BOTH, expand=True)
+		
+		ttk.Label(frm, text="可用存档").pack(anchor=tk.W)
+		lb = tk.Listbox(frm, height=10, exportselection=False)
+		lb.pack(fill=tk.BOTH, expand=True)
+		items = self._list_saves()
+		for it in items:
+			lb.insert(tk.END, it['label'])
+
+		def on_new():
+			new_name = simpledialog.askstring("新建存档", "请输入玩家名称:", parent=win)
+			if not new_name:
+				return
+			self.cfg['name'] = new_name.strip()
+			if callable(save_config):
+				try:
+					save_config(self.cfg)
+				except Exception:
+					pass
+			self.lbl_profile.config(text=self._menu_profile())
+			messagebox.showinfo("提示", f"已切换到新存档: {self.cfg['name']}")
+			win.destroy()
+
+		def on_confirm():
+			sel = lb.curselection()
+			if not sel:
+				messagebox.showinfo("提示", "请选择一个存档，或点击新建")
+				return
+			ch = items[sel[0]]
+			self.cfg['name'] = ch['name']
+			if callable(save_config):
+				try:
+					save_config(self.cfg)
+				except Exception:
+					pass
+			self.lbl_profile.config(text=self._menu_profile())
+			messagebox.showinfo("提示", f"已切换到存档: {ch['name']}")
+			win.destroy()
+
+		btns = ttk.Frame(win)
+		btns.pack(fill=tk.X, padx=10, pady=10)
+		ttk.Button(btns, text="新建存档", command=on_new).pack(side=tk.LEFT, expand=True, fill=tk.X)
+		ttk.Button(btns, text="确定", command=on_confirm).pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(6, 0))
+		ttk.Button(btns, text="取消", command=win.destroy).pack(side=tk.RIGHT, expand=True, fill=tk.X)
+
 	def _menu_refresh_packs(self):
 		"""重新扫描可用场景包并提示完成。"""
 		_ = discover_packs() if callable(discover_packs) else None
@@ -467,37 +564,39 @@ class GameTkApp:
 		ttk.Label(top, textvariable=self.scene_var, font=("Segoe UI", 10, "bold")).pack(side=tk.LEFT)
 		ttk.Button(top, text="主菜单", command=self._back_to_menu, style="Tiny.TButton").pack(side=tk.RIGHT)
 
-		# 顶部：战场区（左：伙伴 右：敌人）——固定 3x5 网格的容器，大色框区分敌我
+		# 顶部：战场区（镜像排列：右友方、左敌方），由 BattlefieldView 托管
 		arena = ttk.Frame(parent)
-		arena.pack(fill=tk.X, expand=False, padx=6, pady=(2, 2))
+		arena.pack(fill=tk.BOTH, expand=False, padx=6, pady=(2, 2))
 		arena.columnconfigure(0, weight=1, uniform='arena')
-		arena.columnconfigure(1, weight=1, uniform='arena')
-		# 伙伴区（左上）：蓝色外框
-		ally_border = tk.Frame(
-			arena,
-			highlightthickness=int(getattr(self, 'ARENA_BORDER_THICKNESS', 4)),
-			highlightbackground=getattr(self, 'ALLY_BORDER', '#4A90E2')
-		)
-		ally_border.grid(row=0, column=0, sticky='nsew', padx=(0, 3))
-		ally_hdr = ttk.Label(ally_border, text="伙伴区 (点击选择 mN)", font=("Segoe UI", 10, 'bold'))
-		ally_hdr.pack(anchor=tk.W, padx=6, pady=(4, 2))
-		self.cards_container = ttk.Frame(ally_border)
-		self.cards_container.pack(fill=tk.X, expand=False, padx=6, pady=(0, 6))
+		# 头部标题（左右各一）
+		hdr = ttk.Frame(arena)
+		hdr.grid(row=0, column=0, sticky='ew')
+		hdr.columnconfigure(0, weight=1)
+		lbls = ttk.Frame(hdr)
+		lbls.pack(fill=tk.X)
+		l1 = ttk.Label(lbls, text="伙伴区 (点击选择 mN)", font=("Segoe UI", 10, 'bold'))
+		l2 = ttk.Label(lbls, text="敌人区 (点击选择 eN)", font=("Segoe UI", 10, 'bold'))
+		l1.pack(side=tk.LEFT, padx=(6, 6))
+		l2.pack(side=tk.RIGHT, padx=(6, 6))
+		# 战场容器：占满一行，由 BattlefieldView 内部创建左右面板
+		bf_holder = ttk.Frame(arena)
+		bf_holder.grid(row=1, column=0, sticky='nsew')
+		# 保存战场容器引用，供切场景时重建视图使用
+		self.battlefield_container = bf_holder
+		arena.rowconfigure(1, weight=1)
+		# 导出包装映射（1-based index -> wrapper）供 SelectionController/高亮使用
 		self.card_wraps = {}
-		self.selected_member_index = None
-		# 敌人区（右上）：红色外框
-		enemy_border = tk.Frame(
-			arena,
-			highlightthickness=int(getattr(self, 'ARENA_BORDER_THICKNESS', 4)),
-			highlightbackground=getattr(self, 'ENEMY_BORDER', '#E74C3C')
-		)
-		enemy_border.grid(row=0, column=1, sticky='nsew', padx=(3, 0))
-		enemy_hdr = ttk.Label(enemy_border, text="敌人区 (点击选择 eN)", font=("Segoe UI", 10, 'bold'))
-		enemy_hdr.pack(anchor=tk.W, padx=6, pady=(4, 2))
-		self.enemy_cards_container = ttk.Frame(enemy_border)
-		self.enemy_cards_container.pack(fill=tk.X, expand=False, padx=6, pady=(0, 6))
 		self.enemy_card_wraps = {}
+		self.selected_member_index = None
 		self.selected_enemy_index = None
+		# 挂载战场视图
+		self.battlefield = BattlefieldView(self)
+		self.battlefield.attach(bf_holder)
+		self.battlefield.set_click_handlers(
+			lambda i: self.selection.on_ally_click(i),
+			lambda i: self.selection.on_enemy_click(i),
+		)
+		self.battlefield.export_wraps_to(self.card_wraps, self.enemy_card_wraps)
 		# 技能/目标选择状态
 		self.selected_skill = None            # 模式：'attack'/'heal'/...
 		self.selected_skill_name = None       # 技能名字，例如 'attack'|'basic_heal'|'drain'
@@ -544,10 +643,6 @@ class GameTkApp:
 			res_view = self.views.get('resources')
 			if res_view and hasattr(res_view, 'attach'):
 				res_view.attach(self.res_buttons_container, self.list_inv)
-			# 敌人视图也记录容器以便自身调度渲染
-			enm_view = self.views.get('enemies')
-			if enm_view and hasattr(enm_view, 'attach'):
-				enm_view.attach(self.enemy_cards_container)
 		except Exception:
 			pass
 
@@ -562,12 +657,8 @@ class GameTkApp:
 
 		# （队伍区已移至顶部战场区）
 
-		# 操作栏（提示）：操作已改为悬浮窗（移到友方卡片上）
-		self.frm_operations = ttk.LabelFrame(body, text="操作提示")
-		self.frm_operations.grid(row=3, column=0, columnspan=2, sticky='ew', pady=(2, 4))
-		self.frm_operations.columnconfigure(0, weight=1)
-		# 初始占位
-		ttk.Label(self.frm_operations, text="将鼠标移到友方角色卡上以显示可用技能/攻击；选择目标后可在悬浮窗内确认或取消。", foreground="#666").grid(row=0, column=0, sticky='w', padx=6, pady=6)
+		# 操作栏（提示）已移除，改用卡片悬浮窗
+		self.frm_operations = None
 
 		# 底部：统一“战斗日志”
 		bottom = ttk.Frame(body)
@@ -580,13 +671,7 @@ class GameTkApp:
 		# 兼容旧引用
 		self.text_log = self.log_pane.widget()
 
-		# 为视图记录容器，便于其内部调度渲染
-		try:
-			al_view = self.views.get('allies')
-			if al_view and hasattr(al_view, 'attach'):
-				al_view.attach(self.cards_container)
-		except Exception:
-			pass
+		# Allies/EnemiesView 已为占位实现，此处不再 attach 专用容器
 
 	# -------- Render --------
 	def refresh_all(self, skip_info_log: bool = False):
@@ -598,18 +683,22 @@ class GameTkApp:
 			self.scene_var.set(f"场景: {scene if getattr(self.controller.game, 'current_scene_title', None) else os.path.basename(scene)}")
 		except Exception:
 			self.scene_var.set("场景: -")
-		for key, fn in (
-			('resources', lambda v: (v.render_inventory(), v.render())),
-			('enemies', lambda v: v.render_all(self.enemy_cards_container)),
-			('allies', lambda v: v.render_all(self.cards_container)),
-			('ops', lambda v: v.render(self.frm_operations)),
-		):
-			try:
-				v = self.views.get(key)
-				if v:
-					fn(v)
-			except Exception:
-				pass
+		# 资源/操作继续由各自视图渲染；战场使用 BattlefieldView
+		try:
+			v = self.views.get('resources')
+			v and v.render_inventory()
+			v and v.render()
+		except Exception:
+			pass
+		try:
+			if hasattr(self, 'battlefield') and self.controller:
+				enemies = getattr(self.controller.game, 'enemies', []) or []
+				board = getattr(getattr(self.controller.game, 'player', None), 'board', []) or []
+				self.battlefield.set_enemies(enemies)
+				self.battlefield.set_allies(board)
+		except Exception:
+			pass
+		# 悬浮窗模式：不再渲染底部操作栏
 
 
 
@@ -787,6 +876,13 @@ class GameTkApp:
 	# -------- Equip/Actions --------
 	def _slot_click(self, m_index: int, slot_key: str, item):
 		"""卡片槽位点击：无物品则打开装备对话；有物品提供卸下/更换选项。"""
+		# 先设置选中成员并重绘高亮，避免点击装备槽后只剩灰色描边
+		try:
+			self.selected_member_index = m_index
+			if hasattr(self, 'selection') and hasattr(self.selection, 'reapply_highlights'):
+				self.selection.reapply_highlights()
+		except Exception:
+			pass
 		if item is None:
 			self._open_equip_dialog(m_index, slot_key)
 			return
@@ -813,6 +909,13 @@ class GameTkApp:
 			except Exception:
 				resp = out
 			self._after_cmd(resp)
+			# 命令执行后会清除高亮，这里恢复当前成员的选中高亮
+			try:
+				self.selected_member_index = m_index
+				if hasattr(self, 'selection') and hasattr(self.selection, 'reapply_highlights'):
+					self.selection.reapply_highlights()
+			except Exception:
+				pass
 		elif choice is False:
 			self._open_equip_dialog(m_index, slot_key)
 		else:
@@ -824,6 +927,13 @@ class GameTkApp:
 		dlg = EquipmentDialog(self, self.root, m_index, slot_key)
 		res = dlg.show()
 		if res is None:
+			# 关闭对话框后恢复选中高亮（若被其他流程清理）
+			try:
+				self.selected_member_index = m_index
+				if hasattr(self, 'selection') and hasattr(self.selection, 'reapply_highlights'):
+					self.selection.reapply_highlights()
+			except Exception:
+				pass
 			return
 		token = f"m{m_index}"
 		out = self._send(f"eq i{res} {token}")
@@ -832,6 +942,13 @@ class GameTkApp:
 		except Exception:
 			resp = out
 		self._after_cmd(resp)
+		# 恢复当前成员的选中高亮
+		try:
+			self.selected_member_index = m_index
+			if hasattr(self, 'selection') and hasattr(self.selection, 'reapply_highlights'):
+				self.selection.reapply_highlights()
+		except Exception:
+			pass
 
 
 
@@ -861,6 +978,32 @@ class GameTkApp:
 			except Exception:
 				pass
 
+	def _append_action_log(self):
+		"""将控制器的最近一条历史与信息细节按顺序输出到 LogPane。
+		- 不输出“信息区/历史”标题
+		- 第一行：历史摘要（若有）
+		- 后续：信息区的细节行；若第一行带 type=skill/attack 等，LogPane 会着色
+		"""
+		try:
+			ctrl = getattr(self, 'controller', None)
+			if not ctrl:
+				return
+			# 1) 最近一条历史（简要，不含前缀）
+			last_hist = None
+			try:
+				if getattr(ctrl, 'history', None):
+					last_hist = ctrl.history[-1]
+			except Exception:
+				last_hist = None
+			if last_hist:
+				self._append_log({'type': 'info', 'text': str(last_hist), 'meta': {'section': 'hist'}})
+			# 2) 信息区细节：控制器可能是字符串或 dict；逐条写入
+			infos = getattr(ctrl, 'info', None) or []
+			for it in infos:
+				self._append_log(it)
+		except Exception:
+			pass
+
 	def _selected_index(self, lb: tk.Listbox) -> Optional[int]:
 		"""返回 Listbox 当前选中索引；未选中则为 None。"""
 		sel = lb.curselection()
@@ -875,7 +1018,7 @@ class GameTkApp:
 			resp = out[0] if isinstance(out, (list, tuple)) and len(out) > 0 else out
 		except Exception:
 			resp = out
-		# 仅附加日志/信息，不清空，不重绘整页
+		# 仅写入持久日志文件
 		try:
 			import os as _os
 			_logdir = CFG.log_dir()
@@ -888,12 +1031,6 @@ class GameTkApp:
 						f.write(json.dumps(line, ensure_ascii=False) + "\n")
 					else:
 						f.write(str(line) + "\n")
-			# UI 信息区只刷新 s5/s3 简报
-			try:
-				self._append_log({'type': 'state', 'text': self.controller._section_info(), 'meta': {'section': 's5', 'state': True}})
-				self._append_log({'type': 'state', 'text': self.controller._section_history(), 'meta': {'section': 's3', 'state': True}})
-			except Exception:
-				pass
 		except Exception as e:
 			self._log_exception(e, '_pick_resource_log')
 		# 局部刷新：资源按钮与背包列表（委托 ResourcesView）
@@ -904,6 +1041,11 @@ class GameTkApp:
 				v.render_inventory()
 		except Exception as e:
 			self._log_exception(e, '_pick_resource_partial_refresh')
+		# 追加 UI 日志：把信息区细节附加在最新历史项之后
+		try:
+			self._append_action_log()
+		except Exception:
+			pass
 		# 保持当前选中高亮与卡片视图不变，避免视觉跳动
 
 
@@ -966,10 +1108,9 @@ class GameTkApp:
 					pass
 		except Exception as e:
 			self._log_exception(e, '_after_cmd_log')
-		# 仅在 UI 信息区输出 s5/s3 简报
+		# UI：把本次信息区细节附加到最新历史行之后
 		try:
-			self._append_log({'type': 'state', 'text': self.controller._section_info(), 'meta': {'section': 's5', 'state': True}})
-			self._append_log({'type': 'state', 'text': self.controller._section_history(), 'meta': {'section': 's3', 'state': True}})
+			self._append_action_log()
 		except Exception as e:
 			self._log_exception(e, '_after_cmd_sections')
 		# 保证恢复默认高亮
@@ -1014,12 +1155,7 @@ class GameTkApp:
 			self._bind_views_context()
 		except Exception:
 			pass
-		# 启动时：仅输出 s5/s3 简报到信息区
-		try:
-			self._append_log({'type': 'state', 'text': self.controller._section_info(), 'meta': {'section': 's5', 'state': True}})
-			self._append_log({'type': 'state', 'text': self.controller._section_history(), 'meta': {'section': 's3', 'state': True}})
-		except Exception:
-			pass
+		# 启动时不再打印信息区/历史区标题块，避免噪声
 		self.refresh_all(skip_info_log=True)
 		try:
 			path = os.path.join(CFG.user_data_dir(), 'scene_runtime.txt')
@@ -1090,8 +1226,14 @@ class GameTkApp:
 				except Exception:
 					pass
 		# 清空索引/状态
-		self.enemy_card_wraps = {}
-		self.card_wraps = {}
+		try:
+			(getattr(self, 'enemy_card_wraps', None) or {}).clear()
+		except Exception:
+			self.enemy_card_wraps = {}
+		try:
+			(getattr(self, 'card_wraps', None) or {}).clear()
+		except Exception:
+			self.card_wraps = {}
 		self.selected_enemy_index = None
 		self.selected_member_index = None
 		# 清空日志面板（保留框架）
@@ -1110,17 +1252,30 @@ class GameTkApp:
 			self.scene_var.set("场景: -")
 		# 让视图持有 game 引用
 		self._bind_views_context()
+		# 战场实例销毁并重建，便于未来扩展大的内部状态
+		try:
+			bf_holder = getattr(self, 'battlefield_container', None)
+			if bf_holder:
+				for ch in list(getattr(bf_holder, 'winfo_children', lambda: [])()):
+					try:
+						ch.destroy()
+					except Exception:
+						pass
+			self.battlefield = BattlefieldView(self)
+			if bf_holder:
+				self.battlefield.attach(bf_holder)
+			# 选择控制器应已存在；若不存在则稍后 refresh_all 前会被创建
+			if hasattr(self, 'selection'):
+				self.battlefield.set_click_handlers(
+					lambda i: self.selection.on_ally_click(i),
+					lambda i: self.selection.on_enemy_click(i),
+				)
+			self.battlefield.export_wraps_to(self.card_wraps, self.enemy_card_wraps)
+		except Exception:
+			pass
 		# 视图各自渲染
 		try:
 			v = self.views.get('resources'); v and v.render_inventory(); v and v.render()
-		except Exception:
-			pass
-		try:
-			v = self.views.get('enemies'); v and v.render_all(self.enemy_cards_container)
-		except Exception:
-			pass
-		try:
-			v = self.views.get('allies'); v and v.render_all(self.cards_container)
 		except Exception:
 			pass
 		try:

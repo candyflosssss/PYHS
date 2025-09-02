@@ -50,14 +50,32 @@ def _get_padx(w: tk.Widget) -> int:
             return int(px[0])
         return int(px)
     except Exception:
-        return 0
+        # try pack manager
+        try:
+            info = w.pack_info()
+            px = info.get('padx', 0)
+            if isinstance(px, tuple):
+                return int(px[0])
+            return int(px)
+        except Exception:
+            return 0
 
 
 def _set_padx(w: tk.Widget, v: int):
     try:
-        w.grid_configure(padx=int(v))
+        mgr = str(w.winfo_manager() or '').lower()
     except Exception:
-        pass
+        mgr = ''
+    if mgr == 'grid':
+        try:
+            w.grid_configure(padx=int(v))
+        except Exception:
+            pass
+    elif mgr == 'pack':
+        try:
+            w.pack_configure(padx=int(v))
+        except Exception:
+            pass
 
 
 def _cancel_anim(w: tk.Widget):
@@ -151,7 +169,11 @@ def flash_border(wrap: tk.Frame, color: str, base: Optional[str] = None, repeats
 
 
 def shake(wrap: tk.Frame, amplitude: int = 3, cycles: int = 8, interval: int = 22):
-    """Small horizontal shake by tweaking padx. Keep subtle to avoid layout jump."""
+    """Small horizontal shake.
+    - If widget is placed (overlay), tweak place x.
+    - Else, tweak padx (grid/pack).
+    Keep subtle to avoid layout jump.
+    """
     _cancel_anim(wrap)
     try:
         if S is not None:
@@ -161,23 +183,54 @@ def shake(wrap: tk.Frame, amplitude: int = 3, cycles: int = 8, interval: int = 2
             interval = int(cfg.get('interval_ms', interval))
     except Exception:
         pass
-    base_px = _get_padx(wrap)
-    seq = []
-    for i in range(cycles):
-        d = amplitude if i % 2 == 0 else -amplitude
-        seq.append(base_px + d)
-    seq.append(base_px)
-    state = {'k': 0}
+    try:
+        mgr = str(wrap.winfo_manager() or '').lower()
+    except Exception:
+        mgr = ''
+    if mgr == 'place':
+        try:
+            info = wrap.place_info()
+            base_x = int(info.get('x', 0))
+            base_y = int(info.get('y', 0))
+        except Exception:
+            base_x, base_y = 0, 0
+        seq = []
+        for i in range(cycles):
+            d = amplitude if i % 2 == 0 else -amplitude
+            seq.append(base_x + d)
+        seq.append(base_x)
+        state = {'k': 0}
 
-    def step():
-        k = state['k']
-        if k >= len(seq):
-            return
-        _set_padx(wrap, seq[k])
-        state['k'] += 1
-        _schedule(wrap, interval, step)
+        def step():
+            k = state['k']
+            if k >= len(seq):
+                return
+            try:
+                wrap.place_configure(x=int(seq[k]), y=int(base_y))
+            except Exception:
+                pass
+            state['k'] += 1
+            _schedule(wrap, interval, step)
 
-    step()
+        step()
+    else:
+        base_px = _get_padx(wrap)
+        seq = []
+        for i in range(cycles):
+            d = amplitude if i % 2 == 0 else -amplitude
+            seq.append(base_px + d)
+        seq.append(base_px)
+        state = {'k': 0}
+
+        def step2():
+            k = state['k']
+            if k >= len(seq):
+                return
+            _set_padx(wrap, seq[k])
+            state['k'] += 1
+            _schedule(wrap, interval, step2)
+
+        step2()
 
 
 def fade_out_and_remove(wrap: tk.Frame, *, to_color: str = '#ffffff', steps: int = 14, interval: int = 55, on_done: Optional[Callable[[], None]] = None):

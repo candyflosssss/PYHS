@@ -8,6 +8,7 @@ from typing import Callable, List, Tuple
 
 from src.game_modes.simple_pve_game import SimplePvEGame
 from src.ui import colors as C
+from src.core.save_state import SaveManager
 
 
 class SimplePvEController:
@@ -42,6 +43,203 @@ class SimplePvEController:
             "end : 结束回合  |  h : 帮助  |  q : 退出"
         )
         self._print_help(initial=True)
+
+        # 缓存技能名（用于通用分段上色）
+        self._skill_names: set[str] = set()
+        try:
+            self._load_skill_names()
+        except Exception:
+            pass
+
+    # --- 颜色与日志辅助 ---
+    def _load_skill_names(self):
+        import json as _json, os as _os
+        try:
+            base = _os.path.dirname(_os.path.dirname(__file__))  # src/
+            path = _os.path.join(base, 'systems', 'skills_catalog.json')
+            with open(path, 'r', encoding='utf-8') as f:
+                data = _json.load(f)
+            names = set()
+            for it in data:
+                if isinstance(it, dict):
+                    ncn = it.get('name_cn'); nen = it.get('name_en'); nid = it.get('id')
+                    if ncn: names.add(str(ncn))
+                    if nen: names.add(str(nen))
+                    if nid: names.add(str(nid))
+            self._skill_names = names
+        except Exception:
+            self._skill_names = set()
+
+    def _colorize_numbers(self, s: str, for_heal: bool = False) -> str:
+        import re as _re
+        # 优先给 AC 数值上防御色
+        s2 = _re.sub(r"AC\s*(\d+)", lambda m: "AC " + C.stat_def(m.group(1)), s)
+        # 其他数字统一高亮；治疗场景用 success 绿
+        if for_heal:
+            return _re.sub(r"(\d+)", lambda m: C.success(m.group(1)), s2)
+        return _re.sub(r"(\d+)", lambda m: C.stat_atk(m.group(1)), s2)
+
+    def _colorize_known_skills(self, s: str) -> str:
+        if not self._skill_names:
+            return s
+        # 按长度降序替换，避免短名抢先覆盖长名
+        for name in sorted(self._skill_names, key=len, reverse=True):
+            if name and name in s:
+                try:
+                    s = s.replace(name, C.skill(name))
+                except Exception:
+                    pass
+        return s
+
+    def _expand_log_entry(self, entry) -> list[str]:
+        """将一条结构化日志展开为多行：主摘要 + 命中/伤害公式等。保留 ANSI，以便 Tk 分段渲染。
+        返回的各行不带换行符，调用方负责加上前缀（如"  · ")。
+        """
+        try:
+            lines: list[str] = []
+            if isinstance(entry, dict):
+                typ = (entry.get('type') or '').lower()
+                txt = self._fmt_log_line(entry)
+                # 通用：着色已在 _fmt_log_line 完成；补上已知技能名和数字上色
+                txt = self._colorize_known_skills(txt)
+                healish = ('恢复' in txt or '治疗' in txt or typ == 'heal')
+                txt = self._colorize_numbers(txt, for_heal=healish)
+                lines.append("  · " + txt)
+                meta = entry.get('meta') or {}
+                if isinstance(meta, dict):
+                    th = meta.get('to_hit')
+                    if isinstance(th, dict) and th.get('formula'):
+                        f = str(th.get('formula'))
+                        f = self._colorize_numbers(f, for_heal=False)
+                        lines.append("    · " + C.label("命中:") + " " + f)
+                    dmg = meta.get('damage')
+                    if isinstance(dmg, dict) and dmg.get('formula'):
+                        f = str(dmg.get('formula'))
+                        f = self._colorize_numbers(f, for_heal=False)
+                        lines.append("    · " + C.label("伤害:") + " " + f)
+                return lines
+            # 字符串：做基础数字与技能名上色
+            s = str(entry)
+            s = self._colorize_known_skills(s)
+            s = self._colorize_numbers(s)
+            lines.append("  · " + s)
+            return lines
+        except Exception:
+            return ["  · " + str(entry)]
+
+    # --- 日志格式化（供 UI 使用） ---
+    def _fmt_log_line(self, line) -> str:
+        """将结构化日志(dict)压缩为人类可读的一行文本；字符串原样返回。"""
+        try:
+            if isinstance(line, dict):
+                typ = (line.get('type') or '').lower()
+                txt = str(line.get('text') or '')
+                meta = line.get('meta') or {}
+                # 技能/攻击/治疗等常见类型，拼合关键字段（并插入分段颜色）
+                if typ == 'skill' and txt:
+                    # 兼容多种句式：
+                    # 1) SRC 使用 SKILL 对 TGT 造成 N 伤害
+                    # 2) SRC 使用 SKILL 未命中 TGT
+                    # 3) SRC 的 SKILL 对 TGT 造成 N 伤害
+                    # 4) SRC 的 SKILL 未命中 TGT
+                    # 5) SKILL 总计造成 N 点伤害
+                    s = txt
+                    import re as _re
+                    try:
+                        # 命中（使用）
+                        m = _re.match(r"^(?P<src>.+?) 使用 (?P<skill>.+?) 对 (?P<tgt>.+?) 造成 (?P<dmg>\d+) 伤害$", s)
+                        if m:
+                            src_col = C.friendly(m.group('src'))
+                            skill_col = C.skill(m.group('skill'))
+                            tgt_col = C.enemy(m.group('tgt'))
+                            dmg_col = C.stat_atk(m.group('dmg'))
+                            return f"{src_col} 使用 {skill_col} 对 {tgt_col} 造成 {dmg_col} 伤害"
+                        # 未命中（使用）
+                        m = _re.match(r"^(?P<src>.+?) 使用 (?P<skill>.+?) 未命中 (?P<tgt>.+)$", s)
+                        if m:
+                            src_col = C.friendly(m.group('src'))
+                            skill_col = C.skill(m.group('skill'))
+                            tgt_col = C.enemy(m.group('tgt'))
+                            return f"{src_col} 使用 {skill_col} 未命中 {tgt_col}"
+                        # 命中（的）
+                        m = _re.match(r"^(?P<src>.+?) 的 (?P<skill>.+?) 对 (?P<tgt>.+?) 造成 (?P<dmg>\d+) 伤害$", s)
+                        if m:
+                            src_col = C.friendly(m.group('src'))
+                            skill_col = C.skill(m.group('skill'))
+                            tgt_col = C.enemy(m.group('tgt'))
+                            dmg_col = C.stat_atk(m.group('dmg'))
+                            return f"{src_col} 的 {skill_col} 对 {tgt_col} 造成 {dmg_col} 伤害"
+                        # 未命中（的）
+                        m = _re.match(r"^(?P<src>.+?) 的 (?P<skill>.+?) 未命中 (?P<tgt>.+)$", s)
+                        if m:
+                            src_col = C.friendly(m.group('src'))
+                            skill_col = C.skill(m.group('skill'))
+                            tgt_col = C.enemy(m.group('tgt'))
+                            return f"{src_col} 的 {skill_col} 未命中 {tgt_col}"
+                        # 总计伤害
+                        m = _re.match(r"^(?P<skill>.+?) 总计造成 (?P<dmg>\d+) 点伤害$", s)
+                        if m:
+                            skill_col = C.skill(m.group('skill'))
+                            dmg_col = C.stat_atk(m.group('dmg'))
+                            return f"{skill_col} 总计造成 {dmg_col} 点伤害"
+                    except Exception:
+                        pass
+                    # 不强加前缀，直接返回原文（交由行类型推断）
+                    # 通用词法增强：技能名与数字会在后续统一再着色
+                    return txt
+                if typ == 'attack' and txt:
+                    return f"攻击 {txt}"
+                if typ == 'info' and txt:
+                    return txt
+                if typ == 'state' and txt:
+                    return txt
+                # 其他带技能名的提示
+                s = txt
+                import re as _re
+                try:
+                    # 施放类：SRC 施放 SKILL，...
+                    m = _re.match(r"^(?P<src>.+?) 施放 (?P<skill>.+?)(，|,)?(?P<tail>.*)$", s)
+                    if m:
+                        return f"{C.friendly(m.group('src'))} 施放 {C.skill(m.group('skill'))}{m.group('tail')}"
+                    # 抵抗类：TGT 抵抗了 SKILL
+                    m = _re.match(r"^(?P<tgt>.+?) 抵抗了 (?P<skill>.+)$", s)
+                    if m:
+                        return f"{C.enemy(m.group('tgt'))} 抵抗了 {C.skill(m.group('skill'))}"
+                    # 被识破/未起效：SRC 的 SKILL 被 TGT 识破
+                    m = _re.match(r"^(?P<src>.+?) 的 (?P<skill>.+?) 被 (?P<tgt>.+?) 识破.*$", s)
+                    if m:
+                        return f"{C.friendly(m.group('src'))} 的 {C.skill(m.group('skill'))} 被 {C.enemy(m.group('tgt'))} 识破"
+                    # 处决：SRC 的 SKILL 处决了 TGT
+                    m = _re.match(r"^(?P<src>.+?) 的 (?P<skill>.+?) 处决了 (?P<tgt>.+)$", s)
+                    if m:
+                        return f"{C.friendly(m.group('src'))} 的 {C.skill(m.group('skill'))} 处决了 {C.enemy(m.group('tgt'))}"
+                    # 缴械成功/失败描述（冒号/逗号）
+                    m = _re.match(r"^(?P<src>.+?) (尝试)?缴械.*?(?P<tgt>[^：:,，]+)(：|:|，|,)?(?P<tail>.*)$", s)
+                    if m:
+                        tail = m.group('tail')
+                        return f"{C.friendly(m.group('src'))} 缴械 {C.enemy(m.group('tgt'))}{(' ' + tail) if tail else ''}"
+                except Exception:
+                    pass
+                # to_hit / damage 摘要
+                th = (meta or {}).get('to_hit') if isinstance(meta, dict) else None
+                dmg = (meta or {}).get('damage') if isinstance(meta, dict) else None
+                parts = []
+                if th and isinstance(th, dict):
+                    roll = th.get('roll')
+                    total = th.get('total')
+                    need = (th.get('needed') or th.get('target_ac') or {}).get('final') if isinstance(th.get('target_ac'), dict) else th.get('needed')
+                    hit = th.get('hit')
+                    parts.append(f"命中检定 d20={roll} 总计={total} {'命中' if hit else '未命中'}{(' vs AC '+str(need)) if need is not None else ''}")
+                if dmg and isinstance(dmg, dict):
+                    parts.append(f"伤害 {dmg.get('total')} ({dmg.get('dice_total')}+{dmg.get('bonus')})")
+                if parts:
+                    return txt + " | " + " ; ".join(parts)
+                # 兜底：序列化为一行
+                import json
+                return txt or json.dumps(line, ensure_ascii=False)
+            return str(line)
+        except Exception:
+            return str(line)
 
     # --- 帮助与区域显示 ---
     def _print_help(self, initial=False):
@@ -440,7 +638,7 @@ class SimplePvEController:
                 logs = getattr(self.game, 'pop_logs', None)
                 if callable(logs):
                     for line in logs():
-                        info_lines.append(f"  · {line}")
+                        info_lines.extend(self._expand_log_entry(line))
                 self.info = info_lines
             else:
                 ok, msg = self.game.player.use_item(name, 1, target=tgt)
@@ -448,7 +646,7 @@ class SimplePvEController:
                 logs = getattr(self.game, 'pop_logs', None)
                 if callable(logs):
                     for line in logs():
-                        info_lines.append(f"  · {line}")
+                        info_lines.extend(self._expand_log_entry(line))
                 self.info = info_lines
             return [self._render_full_view()], False
         if c in ('unequip', 'uneq'):
@@ -615,14 +813,23 @@ class SimplePvEController:
                 added = self.game.player.add_item(item, 1)
                 msg = f"拾取 {res} -> 背包+{added}"
                 self._record(msg)
+                # 持久化：标记资源已采集
+                try:
+                    prof = getattr(self.game, 'profile', None)
+                    scene = getattr(self.game, 'current_scene', None)
+                    if prof and scene:
+                        tok = SaveManager.resource_token(res)
+                        prof.mark_resource_collected(scene, tok)
+                        prof.save()
+                except Exception:
+                    pass
                 # 信息区
                 self.info = [msg]
                 # 合并日志
                 logs = getattr(self.game, 'pop_logs', None)
                 if callable(logs):
                     for line in logs():
-                        detail = f"  · {line}"
-                        self.info.append(detail)
+                        self.info.extend(self._expand_log_entry(line))
                 # 不单独打印成功行，避免干扰；展示完整视图
                 out.append(self._render_full_view())
                 return out, False
@@ -739,8 +946,7 @@ class SimplePvEController:
                 info_lines = [f"{attempt} -> {msg}"]
                 if callable(logs):
                     for line in logs():
-                        detail = f"  · {line}"
-                        info_lines.append(detail)
+                        info_lines.extend(self._expand_log_entry(line))
                 # 把出牌反馈收纳到信息区
                 self.info = info_lines
                 # 出牌后展示完整视图
@@ -784,8 +990,7 @@ class SimplePvEController:
                         info_lines = [f"{attempt} -> {msg}"]
                         if callable(logs):
                             for line in logs():
-                                detail = f"  · {line}"
-                                info_lines.append(detail)
+                                info_lines.extend(self._expand_log_entry(line))
                         self.info = info_lines
                         # 不单独打印成功行；展示完整视图
                         out.append(self._render_full_view())
@@ -831,10 +1036,12 @@ class SimplePvEController:
             ok, msg = self.game.use_skill(skill_name, src_idx, tgt_tok)
             self._record(f"技能 {skill_name} -> {msg}")
             logs = getattr(self.game, 'pop_logs', None)
-            info_lines = [f"技能 {skill_name} 执行: {msg}"]
+            # UI 会显示第一行加重颜色；附加细节作为第二行起的淡色
+        # 不再输出“执行:”的头行，避免重复；直接展示游戏日志明细（带分段颜色）
+            info_lines = []
             if callable(logs):
                 for line in logs():
-                    info_lines.append(f"  · {line}")
+                    info_lines.append("  · " + self._fmt_log_line(line))
             self.info = info_lines
             out.append(self._render_full_view())
             return out, False

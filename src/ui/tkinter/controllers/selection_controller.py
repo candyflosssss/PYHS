@@ -91,12 +91,7 @@ class SelectionController:
                 self.app._update_target_highlights()
             except Exception:
                 pass
-            try:
-                ops = (getattr(self.app, 'views', {}) or {}).get('ops')
-                if ops and hasattr(self.app, 'frm_operations'):
-                    ops.render(self.app.frm_operations)
-            except Exception:
-                pass
+            # 底部操作区已移除：此处不再渲染操作栏或弹窗
         except Exception:
             pass
 
@@ -136,12 +131,7 @@ class SelectionController:
                     self.app._update_target_highlights()
             except Exception:
                 pass
-            try:
-                ops = (getattr(self.app, 'views', {}) or {}).get('ops')
-                if ops and hasattr(self.app, 'frm_operations'):
-                    ops.render(self.app.frm_operations)
-            except Exception:
-                pass
+                # 底部操作区已移除：不再渲染
         except Exception:
             pass
 
@@ -178,24 +168,16 @@ class SelectionController:
             try:
                 self.clear_all()
             finally:
-                try:
-                    ops = (getattr(self.app, 'views', {}) or {}).get('ops')
-                    if ops and hasattr(self.app, 'frm_operations'):
-                        ops.render(self.app.frm_operations)
-                except Exception:
-                    pass
+                # 底部操作区已移除：不再渲染
+                pass
 
     def cancel_skill(self):
         """Cancel current targeting/skill session and restore UI."""
         try:
             self.clear_all()
         finally:
-            try:
-                ops = (getattr(self.app, 'views', {}) or {}).get('ops')
-                if ops and hasattr(self.app, 'frm_operations'):
-                    ops.render(self.app.frm_operations)
-            except Exception:
-                pass
+            # 底部操作区已移除：不再渲染
+            pass
 
     def on_enemy_click(self, idx: int):
         """Handle enemy card click: if in targeting mode, toggle; else set selected enemy."""
@@ -265,8 +247,8 @@ class SelectionController:
                     pass
             try:
                 ops = (getattr(self.app, 'views', {}) or {}).get('ops')
-                if ops and hasattr(self.app, 'frm_operations'):
-                    ops.render(self.app.frm_operations)
+                if ops and w and hasattr(ops, 'show_popup'):
+                    ops.show_popup(idx, w)
             except Exception:
                 pass
         except Exception:

@@ -30,6 +30,12 @@ class Player:
         if len(self.board) < 15:  # 最多15张牌
             self.board.append(card)
             self.hand.pop(card_idx)
+            # 发布新增卡牌事件，便于 GUI 盟友区即时刷新
+            try:
+                from src.core.events import publish as publish_event
+                publish_event('card_added', {'card': card, 'owner': self})
+            except Exception:
+                pass
 
             # 统一触发 on_play
             try:

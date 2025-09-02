@@ -42,6 +42,9 @@ DEFAULTS: Dict[str, Any] = {
 	},
 	"ui": {
 		"tk": {
+			"debug": {
+				"anchors": { "show": True, "color": "#99ccff", "text": "#333333" }
+			},
 			"arena": {
 				# 顶部战场区外框颜色与粗细
 				"ally_border": "#4A90E2",
@@ -97,7 +100,7 @@ DEFAULTS: Dict[str, Any] = {
 			"card": {
 				# 卡片默认尺寸（尽量紧凑；体力行存在时视图层会保证最小高度不被裁切）
 				"width": 160,
-				"height": 70
+				"height": 120
 			},
 			"stamina": {
 				# 体力显示（角色卡左上角的胶囊/条）
@@ -138,7 +141,7 @@ DEFAULTS: Dict[str, Any] = {
 				"damage": "#c0392b",
 				"heal": "#27ae60",
 			},
-			"shake": {"enabled": False, "amplitude": 5, "cycles": 8, "interval_ms": 18},
+			"shake": {"enabled": True, "amplitude": 5, "cycles": 8, "interval_ms": 18},
 			"flash": {"repeats": 3, "interval_ms": 110},
 			"fade_out": {"steps": 16, "interval_ms": 45, "delay_before_ms": 200},
 			"float_text": {"dy": 30, "steps": 18, "interval_ms": 36, "font_size": 27},
@@ -357,6 +360,15 @@ def apply_to_tk_app(app) -> None:
 		app._overlay_target_alpha = float(ov.get("target_alpha", 0.8))
 		app._overlay_fade_interval = int(ov.get("fade_interval_ms", 16))
 		app._overlay_fade_step = float(ov.get("fade_step", 0.1))
+	except Exception:
+		pass
+	# debug: anchors visualization flags/colors
+	try:
+		dbg = (cfg_tk.get("debug") or {})
+		anc = (dbg.get("anchors") or {})
+		app._debug_show_anchors = bool(anc.get("show", False))
+		app._debug_anchor_color = anc.get("color", "#99ccff")
+		app._debug_anchor_text = anc.get("text", "#333333")
 	except Exception:
 		pass
 	try:

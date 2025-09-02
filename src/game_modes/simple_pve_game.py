@@ -16,6 +16,7 @@ from src.core.cards import NormalCard
 from src.ui import colors as C
 from src.core.events import publish as publish_event
 from src.core.zone import ObservableList
+from src.core.save_state import SaveManager
 
 
 class SimplePvEGame:
@@ -65,6 +66,11 @@ class SimplePvEGame:
         self.resource_zone = self.resources
         self.players = {self.player.name: self.player}
         # 初始化默认场景
+        # 存档/世界进度
+        try:
+            self.profile = SaveManager.load(self.player.name)
+        except Exception:
+            self.profile = None
         self._init_board()
         # 启用被动系统（事件驱动）
         try:
@@ -72,10 +78,38 @@ class SimplePvEGame:
             PS.setup()
         except Exception:
             pass
+        # 将当前初始背包/队伍拍快照
+        try:
+            if self.profile:
+                self.profile.snapshot_inventory(self.player.inventory)
+                self.profile.snapshot_party(self.player.board)
+                self.profile.save()
+        except Exception:
+            pass
         # 订阅我方随从死亡事件：触发亡语并从棋盘安全移除
         try:
             from src.core.events import subscribe as subscribe_event
             self._subs.append(('card_died', subscribe_event('card_died', self._on_card_died)))
+        except Exception:
+            pass
+        # 增量持久：背包/队伍/生命变化/装备变化
+        try:
+            from src.core.events import subscribe as subscribe_event
+            def _snap_any(_e, _p):
+                try:
+                    if self.profile:
+                        self.profile.snapshot_inventory(self.player.inventory)
+                        self.profile.snapshot_party(self.player.board)
+                        self.profile.save()
+                except Exception:
+                    pass
+            for evt in (
+                'inventory_changed','equipment_changed','card_damaged','card_healed','card_died','enemy_died','resource_changed'
+            ):
+                try:
+                    self._subs.append((evt, subscribe_event(evt, _snap_any)))
+                except Exception:
+                    pass
         except Exception:
             pass
         # skill dispatch map
@@ -239,17 +273,24 @@ class SimplePvEGame:
         self.player.board.clear()
         self.player.hand.clear()  # 场景模式不自动发起手牌
 
-        # 敌人（最多 15）
+    # 敌人（最多 15）
         for ed in data.get('enemies', [])[:15]:
             e = self._make_enemy(ed)
             if e is not None:
                 self.enemies.append(e)
 
-        # 资源
+    # 资源
         for rd in data.get('resources', []):
             r = self._make_resource(rd)
             if r is not None:
                 self.resources.append(r)
+
+        # 应用世界进度：过滤已被清除的敌人与资源
+        try:
+            if self.profile and self.current_scene:
+                self.profile.apply_scene_progress(self.current_scene, self.enemies, self.resources)
+        except Exception:
+            pass
 
         # 我方随从（最多 15）
         if eff_keep and preserved_board:
@@ -266,6 +307,13 @@ class SimplePvEGame:
         # 再次裁剪，确保不超过 15
         if len(self.player.board) > 15:
             self.player.board[:] = self.player.board[:15]
+
+        # 应用队伍快照（恢复 HP/装备，不含体力）
+        try:
+            if self.profile:
+                self.profile.apply_party_snapshot_to_board(self.player.board)
+        except Exception:
+            pass
 
         # 初始背包：可选字段 inventory/items，支持与 _equip_from_json 相似的条目结构
         try:
@@ -798,6 +846,14 @@ class SimplePvEGame:
         try:
             if enemy in self.enemies:
                 self.enemies.remove(enemy)
+        except Exception:
+            pass
+        # 标记持久进度
+        try:
+            if self.profile and prev_scene:
+                tok = SaveManager.enemy_token(enemy)
+                self.profile.mark_enemy_killed(prev_scene, tok)
+                self.profile.save()
         except Exception:
             pass
         try:

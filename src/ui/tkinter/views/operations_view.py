@@ -147,12 +147,43 @@ class OperationsView:
 
     # --- rendering ---
     def render(self, container):
-        # 底部操作栏已废弃：清空容器，不显示任何内容
+        # popup-only 模式：若未提供底部容器则直接返回，避免事件回调触发异常
+        if not container:
+            return None
+        # 清理容器
         for ch in list(container.winfo_children()):
             try:
                 ch.destroy()
             except Exception:
                 pass
+        # 若当前无选中成员，则无需显示操作
+        sel = getattr(self.app, 'selected_member_index', None)
+        if not sel:
+            return
+        ops = ttk.Frame(container)
+        ops.grid(row=0, column=0, sticky='w', padx=6, pady=6)
+        # 攻击（根据体力禁用；tooltip 显示体力消耗）
+        atk_btn = ttk.Button(ops, text="攻击", command=lambda: getattr(self.app, 'selection', self.app).begin_skill(sel, 'attack'), style="Tiny.TButton")
+        try:
+            board = self.app.controller.game.player.board
+            member = board[sel-1] if sel and 0 < sel <= len(board) else None
+            sp = int(getattr(member, 'stamina', 0))
+            cost = 1
+            if sp <= 0:
+                atk_btn.state(['disabled'])
+            from .. import ui_utils as U
+            U.attach_tooltip(atk_btn, f"体力消耗: {cost}")
+        except Exception:
+            pass
+        atk_btn.pack(side=tk.LEFT)
+        # 取消目标选择（如果在选择会话中）
+        try:
+            in_targeting = bool(getattr(self.app, 'target_engine', None) and self.app.target_engine.active)
+        except Exception:
+            in_targeting = False
+        ttk.Button(ops, text=("确定" if in_targeting else "刷新"), command=(getattr(self.app, 'selection', self.app).confirm_skill if in_targeting else self.app.refresh_all), style="Tiny.TButton").pack(side=tk.LEFT, padx=6)
+        if in_targeting:
+            ttk.Button(ops, text="取消", command=getattr(self.app, 'selection', self.app).cancel_skill, style="Tiny.TButton").pack(side=tk.LEFT)
         return
         # 旧实现保留在下方（如需回退可启用）
         sel = getattr(self.app, 'selected_member_index', None)

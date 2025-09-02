@@ -15,6 +15,58 @@ import json, os
 _SKILL_CATALOG_CACHE: dict[str, dict] | None = None
 
 
+def compute_ac_for_model(app, m: Any, *, is_enemy: bool = False) -> int:
+    """Compute AC consistently for both allies and enemies.
+
+    Priority:
+    1) If model has dnd['ac'], use it.
+    2) Else 10 + defense (from equipment or model total) + DEX mod (if dnd attrs present).
+
+    Notes:
+    - Allies typically have equipment with get_total_defense(); enemies may expose
+      get_total_defense() or a plain 'defense' attribute.
+    - If attrs missing, DEX mod falls back to 0.
+    """
+    # 1) explicit dnd.ac
+    try:
+        dnd = getattr(m, 'dnd', None)
+        if isinstance(dnd, dict) and dnd.get('ac') is not None:
+            return int(dnd.get('ac'))
+    except Exception:
+        pass
+    # 2) base 10 + defense + dex_mod
+    base = 10
+    defense = 0
+    # defense from equipment or model
+    try:
+        if hasattr(m, 'equipment') and getattr(m, 'equipment') is not None:
+            eq = m.equipment
+            if hasattr(eq, 'get_total_defense') and callable(eq.get_total_defense):
+                defense = int(eq.get_total_defense())
+            else:
+                defense = int(getattr(eq, 'defense', 0) or 0)
+        elif hasattr(m, 'get_total_defense') and callable(getattr(m, 'get_total_defense')):
+            defense = int(m.get_total_defense())
+        else:
+            defense = int(getattr(m, 'defense', 0) or 0)
+    except Exception:
+        defense = 0
+    # dex modifier if available in dnd attrs
+    dex_mod = 0
+    try:
+        attrs = (getattr(m, 'dnd', None) or {}).get('attrs') or (getattr(m, 'dnd', None) or {}).get('attributes')
+        if isinstance(attrs, dict):
+            dex_raw = attrs.get('dex', attrs.get('DEX'))
+            if dex_raw is not None:
+                dex_mod = (int(dex_raw) - 10) // 2
+    except Exception:
+        dex_mod = 0
+    try:
+        return int(base + defense + dex_mod)
+    except Exception:
+        return 10 + int(defense)
+
+
 def _skill_catalog() -> dict[str, dict]:
     global _SKILL_CATALOG_CACHE
     if _SKILL_CATALOG_CACHE is not None:
@@ -114,21 +166,18 @@ def equipment_tooltip(item, label: str, *, is_enemy: bool | None = None, app=Non
 
 
 def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_enemy: bool = False) -> ttk.Frame:
-    # 攻击值优先从常见字段获取：attack -> atk -> base_atk
-    try:
-        if hasattr(m, 'attack'):
-            base_atk = int(getattr(m, 'attack', 0) or 0)
-        elif hasattr(m, 'atk'):
-            base_atk = int(getattr(m, 'atk', 0) or 0)
-        else:
-            base_atk = int(getattr(m, 'base_atk', 0) or 0)
-    except Exception:
-        base_atk = 0
-    try:
-        eq_atk = int(m.equipment.get_total_attack() if hasattr(m, 'equipment') and m.equipment else 0)
-    except Exception:
-        eq_atk = 0
-    total_atk = base_atk + eq_atk
+    # 攻击值拆分：优先 base_atk + 装备攻，避免把总攻(attack/get_total_attack)再叠加一次
+    def _split_atk(model: Any) -> tuple[int, int, int]:
+        try:
+            base = int(getattr(model, 'base_atk', getattr(model, 'atk', 0)) or 0)
+        except Exception:
+            base = 0
+        try:
+            eq = int(model.equipment.get_total_attack() if hasattr(model, 'equipment') and getattr(model, 'equipment') else 0)
+        except Exception:
+            eq = 0
+        return base, eq, base + eq
+    base_atk, eq_atk, total_atk = _split_atk(m)
     cur_hp = int(getattr(m, 'hp', 0))
     max_hp = int(getattr(m, 'max_hp', cur_hp))
     try:
@@ -197,10 +246,10 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
     ttk.Label(atk_wrap, text="⚔", font=("Segoe UI", 11), padding=0).pack(side=tk.LEFT, padx=(0,0))
     ttk.Label(atk_wrap, textvariable=atk_var, foreground=col_atk, style="Tiny.TLabel", font=("Segoe UI", 11, 'bold'), anchor='w', padding=0).pack(side=tk.LEFT, padx=(0,0))
     atk_wrap.grid(row=0, column=0, sticky='w', padx=(0, 0), pady=(0, 0))
-    # 防御：图标 + 数字（3位预留），紧贴无空格
+    # 防御：改用文本“AC”，避免 emoji 在 Windows 上引发布局抖动
     ac_wrap = ttk.Frame(stats)
-    ttk.Label(ac_wrap, text="🛡", font=("Segoe UI", 11), padding=0).pack(side=tk.LEFT, padx=(0,0))
-    ttk.Label(ac_wrap, textvariable=ac_var, foreground=col_ac, style="Tiny.TLabel", font=("Segoe UI", 11, 'bold'), anchor='w', padding=0).pack(side=tk.LEFT, padx=(0,0))
+    ttk.Label(ac_wrap, text="AC", font=("Segoe UI", 10, 'bold'), padding=0).pack(side=tk.LEFT, padx=(0,0))
+    ttk.Label(ac_wrap, textvariable=ac_var, foreground=col_ac, style="Tiny.TLabel", font=("Segoe UI", 11, 'bold'), anchor='w', padding=0).pack(side=tk.LEFT, padx=(4,0))
     ac_wrap.grid(row=1, column=0, sticky='w', padx=(0, 0), pady=(2, 0))
 
     # 角色卡右侧装备槽：敌方显示为禁用态（可见信息不可操作），我方可操作
@@ -230,7 +279,27 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
             # 敌方：禁用按钮，仅展示信息，不触发任何回调
             btn = ttk.Button(right, text=text, state=tk.DISABLED, style="Slot.TButton")
         else:
-            btn = ttk.Button(right, text=text, command=lambda: app._slot_click(m_index, slot_key, item), style="Slot.TButton")
+            # 点击时即时读取当前装备，避免捕获旧 item
+            def _on_click():
+                try:
+                    cur_m = getattr(frame, '_model_ref', None) or m
+                    eq = getattr(cur_m, 'equipment', None)
+                    cur_item = None
+                    if slot_key == 'left':
+                        cur_item = getattr(eq, 'left_hand', None) if eq else None
+                    elif slot_key == 'right':
+                        # 双手武器占用右手
+                        lh = getattr(eq, 'left_hand', None) if eq else None
+                        if lh is not None and getattr(lh, 'is_two_handed', False):
+                            cur_item = lh
+                        else:
+                            cur_item = getattr(eq, 'right_hand', None) if eq else None
+                    elif slot_key == 'armor':
+                        cur_item = getattr(eq, 'armor', None) if eq else None
+                except Exception:
+                    cur_item = item
+                return app._slot_click(m_index, slot_key, cur_item)
+            btn = ttk.Button(right, text=text, command=_on_click, style="Slot.TButton")
         # 更紧凑的外边距与单列布局
         btn.grid(row=r, column=0, sticky='e', pady=(0, 0), padx=(0, 0))
         # 标记为装备槽按钮，AlliesView 绑定时将跳过其操作栏事件
@@ -277,8 +346,12 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
                 c.create_line(4, 2, 4, 14, fill=fill, width=4, capstyle=tk.ROUND)
                 c.pack(side=tk.LEFT, padx=0)
                 caps.append(c)
+            # 暴露引用用于后续刷新
             frame._st_caps = caps
             frame._st_colors = (col_on, col_off)
+            frame._st_cap_wrap = cap_wrap
+            frame._st_row = st_row
+            frame._st_max_caps = max_caps
     except Exception:
         pass
 
@@ -333,68 +406,71 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
         pass
 
     def card_tip():
-        # Provide tooltip matching the semantics of the "s 5" command output when possible.
-        # Try to use attributes commonly present on members/enemies to build a similar text.
-        parts = []
-        parts.append(f"名称: {name}")
-        # Attack (show breakdown if available)
-        parts.append(f"攻击: {total_atk} (基础{base_atk} + 装备{eq_atk})")
-    # 卡面不显示防御数值
-        parts.append(f"HP: {cur_hp}/{max_hp}")
+        # 动态读取最新数据，避免悬浮窗展示旧数值
         try:
-            parts.append(f"AC: {ac if ac is not None else ac_val}")
+            cur_m = getattr(frame, '_model_ref', None) or m
         except Exception:
-            parts.append(f"AC: {ac}")
-        if True:
-            # 六维在悬浮窗中用中文标签并纵向排列
+            cur_m = m
+        try:
+            nm = getattr(cur_m, 'display_name', None) or getattr(cur_m, 'name', None) or name
+        except Exception:
+            nm = name
+        b, eqa, tot = 0, 0, 0
+        try:
+            b, eqa, tot = (lambda: (int(getattr(cur_m, 'base_atk', getattr(cur_m, 'atk', 0)) or 0), int(getattr(cur_m, 'equipment').get_total_attack()) if getattr(cur_m, 'equipment', None) else 0, 0))()
+            tot = b + eqa
+        except Exception:
             try:
-                mapping = [
-                    ('str', '力量'),
-                    ('dex', '敏捷'),
-                    ('con', '体质'),
-                    ('int', '智力'),
-                    ('wis', '感知'),
-                    ('cha', '魅力'),
-                ]
+                tot = int(getattr(cur_m, 'get_total_attack')() if hasattr(cur_m, 'get_total_attack') else getattr(cur_m, 'attack', 0))
+            except Exception:
+                tot = 0
+        try:
+            curhp = int(getattr(cur_m, 'hp', 0)); mxhp = int(getattr(cur_m, 'max_hp', curhp))
+        except Exception:
+            curhp = max_hp; mxhp = max_hp
+        try:
+            ac_now = compute_ac_for_model(app, cur_m, is_enemy=bool(getattr(frame, '_is_enemy', False)))
+        except Exception:
+            ac_now = ac_val
+        parts = [f"名称: {nm}", f"攻击: {tot} (基础{b} + 装备{eqa})", f"HP: {curhp}/{mxhp}", f"AC: {ac_now}"]
+        # 属性（若存在）
+        try:
+            cur_attrs = None
+            dnd_now = getattr(cur_m, 'dnd', None)
+            if isinstance(dnd_now, dict):
+                cur_attrs = dnd_now.get('attrs') or dnd_now.get('attributes')
+            mapping = [('str','力量'),('dex','敏捷'),('con','体质'),('int','智力'),('wis','感知'),('cha','魅力')]
+            if isinstance(cur_attrs, dict):
                 lines = []
                 for key, zh in mapping:
-                    v = None
-                    if isinstance(attrs, dict):
-                        v = attrs.get(key, attrs.get(key.upper()))
+                    v = cur_attrs.get(key, cur_attrs.get(key.upper()))
                     if v is None:
                         lines.append(f"{zh} -")
-                        continue
-                    try:
-                        iv = int(v)
-                        mod = (iv - 10) // 2
-                        lines.append(f"{zh} {iv}({mod:+d})")
-                    except Exception:
-                        lines.append(f"{zh} {v}")
+                    else:
+                        try:
+                            iv = int(v); mod = (iv - 10) // 2
+                            lines.append(f"{zh} {iv}({mod:+d})")
+                        except Exception:
+                            lines.append(f"{zh} {v}")
                 if lines:
-                    parts.append("属性:")
-                    parts.extend(lines)
-            except Exception:
-                if isinstance(attrs, dict) and attrs:
-                    parts.append("属性:")
-                    for k, v in attrs.items():
-                        parts.append(f"{k.upper()} {v}")
-        eq_list = []
-        # 在悬浮窗中仍然列出装备名称（如果存在）
+                    parts.append("属性:"); parts.extend(lines)
+        except Exception:
+            pass
+        # 装备名称
         try:
-            eq = getattr(m, 'equipment', None)
+            eq = getattr(cur_m, 'equipment', None)
+            eq_list = []
             if eq:
                 if getattr(eq, 'left_hand', None):
                     eq_list.append(f"左手: {getattr(eq.left_hand, 'name', '-')}")
                 if getattr(eq, 'right_hand', None):
-                    # 若左手为双手武器则 right_hand 可能为 None
                     eq_list.append(f"右手: {getattr(eq.right_hand, 'name', '-')}")
                 if getattr(eq, 'armor', None):
                     eq_list.append(f"盔甲: {getattr(eq.armor, 'name', '-')}")
+            if eq_list:
+                parts.append("装备: " + ", ".join(eq_list))
         except Exception:
             pass
-        if eq_list:
-            parts.append("装备: " + ", ".join(eq_list))
-        # This function intentionally mirrors a typical "s 5" style multiline summary.
         return "\n".join(parts)
 
     # 挂载可更新引用，供事件驱动的微更新使用
@@ -411,3 +487,116 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
         pass
     U.attach_tooltip_deep(frame, card_tip)
     return frame
+
+
+def refresh_character_card(app, frame: ttk.Frame):
+    """轻量刷新已创建的角色卡：攻击、AC、HP条、装备槽文本。
+    要求 frame 上挂有 _model_ref/_atk_var/_ac_var/_hp_canvas/_hp_cur/_hp_max/_btn_left/_btn_right/_btn_armor。
+    """
+    try:
+        m = getattr(frame, '_model_ref', None)
+        if not m:
+            return
+        # 攻击合计（仅 base_atk + 装备攻，避免把总攻再叠加）
+        try:
+            base_atk = int(getattr(m, 'base_atk', getattr(m, 'atk', 0)) or 0)
+        except Exception:
+            base_atk = 0
+        try:
+            eq_atk = int(m.equipment.get_total_attack() if hasattr(m, 'equipment') and m.equipment else 0)
+        except Exception:
+            eq_atk = 0
+        total_atk = base_atk + eq_atk
+        try:
+            frame._atk_var.set(str(total_atk))
+        except Exception:
+            pass
+        # AC
+        try:
+            ac_val = compute_ac_for_model(app, m, is_enemy=bool(getattr(frame, '_is_enemy', False)))
+            frame._ac_var.set(str(ac_val))
+        except Exception:
+            pass
+    # HP 数值与血条
+        try:
+            cur_hp = int(getattr(m, 'hp', 0))
+            max_hp = int(getattr(m, 'max_hp', cur_hp))
+            frame._hp_cur = cur_hp
+            frame._hp_max = max_hp
+            # 触发一次重绘
+            canvas = getattr(frame, '_hp_canvas', None)
+            if canvas:
+                try:
+                    w = max(1, int(canvas.winfo_width() or 1))
+                except Exception:
+                    w = 1
+                try:
+                    # 重写一次与创建时相同的绘制逻辑（缩减版）
+                    hcfg = getattr(app, '_hp_bar_cfg', {}) or {}
+                    h = int(hcfg.get('height', 12)); bg = hcfg.get('bg', '#e5e7eb'); fg = hcfg.get('fg', '#e74c3c'); tx = hcfg.get('text', '#ffffff'); fs = int(hcfg.get('font_size', 10)); oc = hcfg.get('text_outline', '#000000')
+                    canvas.delete('all')
+                    ratio = 0 if max_hp <= 0 else max(0.0, min(1.0, float(cur_hp)/float(max_hp)))
+                    fill_w = int(w * ratio)
+                    canvas.create_rectangle(0, 0, w, h, fill=bg, outline=bg, width=0)
+                    if fill_w > 0:
+                        canvas.create_rectangle(0, 0, fill_w, h, fill=fg, outline=fg, width=0)
+                    cx, cy = w//2, h//2
+                    for dx, dy in ((-1,0),(1,0),(0,-1),(0,1)):
+                        canvas.create_text(cx+dx, cy+dy, text=f"{cur_hp}/{max_hp}", fill=oc, font=("Segoe UI", fs, 'bold'))
+                    canvas.create_text(cx, cy, text=f"{cur_hp}/{max_hp}", fill=tx, font=("Segoe UI", fs, 'bold'))
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        # 体力胶囊：根据当前体力重新上色/必要时重建数量
+        try:
+            st_cfg = getattr(app, '_stamina_cfg', {}) or {}
+            if st_cfg.get('enabled', True):
+                cur = int(getattr(m, 'stamina', 0)); mx = int(getattr(m, 'stamina_max', cur or 1))
+                max_caps = int(getattr(frame, '_st_max_caps', st_cfg.get('max_caps', 6)))
+                show_n = min(mx, max_caps)
+                caps = list(getattr(frame, '_st_caps', []) or [])
+                cap_wrap = getattr(frame, '_st_cap_wrap', None)
+                colors = getattr(frame, '_st_colors', ('#2ecc71', '#e74c3c'))
+                col_on, col_off = colors[0], colors[1]
+                # 如数量不符则重建
+                if cap_wrap is not None and len(caps) != show_n:
+                    try:
+                        for ch in list(cap_wrap.winfo_children()):
+                            ch.destroy()
+                    except Exception:
+                        pass
+                    caps = []
+                    for i in range(show_n):
+                        c = tk.Canvas(cap_wrap, width=8, height=16, highlightthickness=0, bg=getattr(cap_wrap, 'bg', '#f2f3f5'))
+                        c.create_line(4, 2, 4, 14, fill=(col_on if i < cur else col_off), width=4, capstyle=tk.ROUND)
+                        c.pack(side=tk.LEFT, padx=0)
+                        caps.append(c)
+                    frame._st_caps = caps
+                else:
+                    # 数量一致：仅重绘颜色
+                    for i, c in enumerate(caps):
+                        try:
+                            c.delete('all')
+                            c.create_line(4, 2, 4, 14, fill=(col_on if i < cur else col_off), width=4, capstyle=tk.ROUND)
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+        # 装备槽文本
+        try:
+            eq = getattr(m, 'equipment', None)
+            left_item = getattr(eq, 'left_hand', None) if eq else None
+            armor_item = getattr(eq, 'armor', None) if eq else None
+            right_item_raw = getattr(eq, 'right_hand', None) if eq else None
+            right_item = left_item if getattr(left_item, 'is_two_handed', False) else right_item_raw
+            if hasattr(frame, '_btn_left') and frame._btn_left:
+                frame._btn_left.config(text=(getattr(left_item, 'name', '-') if left_item else '左手: -'))
+            if hasattr(frame, '_btn_armor') and frame._btn_armor:
+                frame._btn_armor.config(text=(getattr(armor_item, 'name', '-') if armor_item else '盔甲: -'))
+            if hasattr(frame, '_btn_right') and frame._btn_right:
+                frame._btn_right.config(text=(getattr(right_item, 'name', '-') if right_item else '右手: -'))
+        except Exception:
+            pass
+    except Exception:
+        pass

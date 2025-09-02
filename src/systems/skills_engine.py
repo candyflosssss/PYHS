@@ -323,6 +323,11 @@ def skill_touch_of_undeath(game, src, tgt) -> Tuple[bool, str]:
         if len(board) < 15:
             board.append(sk)
             game.log({'type': 'skill', 'text': f"{src} 的 亡灵之触 召唤了 {sk}", 'meta': {}})
+            try:
+                from src.core.events import publish as publish_event
+                publish_event('card_added', {'card': sk, 'owner': getattr(game, 'player', None)})
+            except Exception:
+                pass
             return True, '召唤完成'
         else:
             return False, '棋盘已满，无法召唤'
