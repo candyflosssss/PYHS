@@ -28,8 +28,8 @@ class BattlefieldView:
     """
 
     COLS = 3
-    CARD_W = 88
-    CARD_H = 96
+    CARD_W = 92
+    CARD_H = 112
 
     def __init__(self, owner: Any):
         # owner 可以是 Tk root 或 app 实例；尽量自动识别

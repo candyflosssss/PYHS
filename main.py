@@ -4,9 +4,7 @@ import os
 from src import app_config as CFG
 
 
-def _get_base_dir() -> str:
-    """保持旧接口，委托到 app_config.base_dir。"""
-    return CFG.base_dir()
+
 
 
 def _get_config_path() -> str:

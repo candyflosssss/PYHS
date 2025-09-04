@@ -127,35 +127,5 @@ class Player:
         
         return base_defense + equipment_bonus
 
-    def show_hand(self):
-        """显示手牌"""
-        if not self.hand:
-            print("手牌为空")
-            return
-        
-        print(f"{self.name} 的手牌:")
-        for i, card in enumerate(self.hand):
-            print(f"{i+1}. {card}")
-
-    def show_board(self):
-        """显示战场"""
-        if not self.board:
-            print(f"{self.name} 的战场为空")
-            return
-        
-        print(f"{self.name} 的战场:")
-        for i, card in enumerate(self.board):
-            print(f"{i+1}. {card}")
-
-    def show_status(self):
-        """显示玩家状态"""
-        print(f"\n=== {self.name} 状态 ===")
-        print(f"生命值: {self.hp}/{self.max_hp}")
-        print(f"手牌数量: {len(self.hand)}")
-        print(f"战场随从: {len(self.board)}")
-        
-        if hasattr(self, 'equipment_system'):
-            print(f"装备: {self.equipment_system}")
-
     def __str__(self):
         return f"{self.name}(HP:{self.hp}/{self.max_hp}, 手牌:{len(self.hand)}, 战场:{len(self.board)})"

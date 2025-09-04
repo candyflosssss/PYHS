@@ -241,10 +241,10 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
     except Exception:
         col_atk, col_hp_pos, col_hp_zero, col_ac = "#E6B800", "#27ae60", "#c0392b", "#2980b9"
     stats.grid_columnconfigure(0, weight=0)
-    # 攻击：图标 + 数字（3位预留），紧贴无空格
+    # 攻击：使用文本“攻”避免 emoji 在 Windows 上造成行高/对齐问题
     atk_wrap = ttk.Frame(stats)
-    ttk.Label(atk_wrap, text="⚔", font=("Segoe UI", 11), padding=0).pack(side=tk.LEFT, padx=(0,0))
-    ttk.Label(atk_wrap, textvariable=atk_var, foreground=col_atk, style="Tiny.TLabel", font=("Segoe UI", 11, 'bold'), anchor='w', padding=0).pack(side=tk.LEFT, padx=(0,0))
+    ttk.Label(atk_wrap, text="攻", font=("Segoe UI", 10, 'bold'), padding=0).pack(side=tk.LEFT, padx=(0,0))
+    ttk.Label(atk_wrap, textvariable=atk_var, foreground=col_atk, style="Tiny.TLabel", font=("Segoe UI", 11, 'bold'), anchor='w', padding=0).pack(side=tk.LEFT, padx=(4,0))
     atk_wrap.grid(row=0, column=0, sticky='w', padx=(0, 0), pady=(0, 0))
     # 防御：改用文本“AC”，避免 emoji 在 Windows 上引发布局抖动
     ac_wrap = ttk.Frame(stats)
@@ -262,7 +262,7 @@ def create_character_card(app, parent: tk.Widget, m: Any, m_index: int, *, is_en
 
     # 右侧更紧凑：去除多余列与内边距，使用单列承载按钮
     right = ttk.Frame(frame, padding=(0, 0))
-    right.grid(row=0, column=1, rowspan=2, sticky='n')
+    right.grid(row=0, column=1, rowspan=2, sticky='ne', padx=(4,0))
     right.columnconfigure(0, weight=0)
 
     def slot_text(label, item):

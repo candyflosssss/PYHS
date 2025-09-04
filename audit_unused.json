@@ -1,0 +1,1202 @@
+{
+  "summary": {
+    "modules": 71,
+    "defs": 1272,
+    "unused_defs": 129,
+    "suspicious_modules": 2
+  },
+  "unused_candidates": [
+    {
+      "module": "main",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\main.py",
+      "name": "_get_base_dir",
+      "kind": "function",
+      "line": 7,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "safe_to_remove",
+  "action": "removed",
+  "notes": "已去除此别名；直接使用 app_config.base_dir",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.settings",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\settings.py",
+      "name": "reload",
+      "kind": "function",
+      "line": 226,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "开发期用于刷新缓存；虽无静态引用，保留以便控制台/脚本使用",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.settings",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\settings.py",
+      "name": "stamina_base",
+      "kind": "function",
+      "line": 248,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "通过 getattr(S,'stamina_base')() 间接调用；保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "tools.audit_unused",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\tools\\audit_unused.py",
+      "name": "visit_FunctionDef",
+      "kind": "function",
+      "line": 33,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "AST 访问器方法由 ast.NodeVisitor 反射调用；保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "tools.audit_unused",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\tools\\audit_unused.py",
+      "name": "visit_AsyncFunctionDef",
+      "kind": "function",
+      "line": 39,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "AST 访问器方法；保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "tools.audit_unused",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\tools\\audit_unused.py",
+      "name": "visit_ClassDef",
+      "kind": "function",
+      "line": 44,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "AST 访问器方法；保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "tools.audit_unused",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\tools\\audit_unused.py",
+      "name": "visit_Name",
+      "kind": "function",
+      "line": 53,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "AST 访问器方法；保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "tools.audit_unused",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\tools\\audit_unused.py",
+      "name": "visit_Attribute",
+      "kind": "function",
+      "line": 56,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "AST 访问器方法；保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.core.base_entity",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\core\\base_entity.py",
+      "name": "remove_tag",
+      "kind": "function",
+      "line": 66,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "与 add_tag/has_tag 配套的API，轻量保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.core.base_entity",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\core\\base_entity.py",
+      "name": "is_dead",
+      "kind": "function",
+      "line": 118,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "语义明确的便捷方法；不建议移除",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.core.cards",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\core\\cards.py",
+      "name": "sync_state",
+      "kind": "function",
+      "line": 39,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "safe_to_remove",
+  "action": "removed",
+  "notes": "未发现使用；函数已从代码库删除",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.core.event_manager",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\core\\event_manager.py",
+      "name": "clear_subscribers",
+      "kind": "function",
+      "line": 98,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "调试/测试常用；保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.core.event_manager",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\core\\event_manager.py",
+      "name": "get_subscriber_count",
+      "kind": "function",
+      "line": 122,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "诊断用途；保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.core.event_manager",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\core\\event_manager.py",
+      "name": "get_all_events",
+      "kind": "function",
+      "line": 126,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "诊断用途；保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.core.event_manager",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\core\\event_manager.py",
+      "name": "safe_publish_decorator",
+      "kind": "function",
+      "line": 164,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "safe_to_remove",
+  "action": "removed",
+  "notes": "未发现引用；函数已从代码库删除",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.core.event_manager",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\core\\event_manager.py",
+      "name": "publish_entity_event",
+      "kind": "function",
+      "line": 204,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "safe_to_remove",
+  "action": "removed",
+  "notes": "未发现引用；函数已从代码库删除",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.core.event_manager",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\core\\event_manager.py",
+      "name": "publish_combat_event",
+      "kind": "function",
+      "line": 210,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "safe_to_remove",
+  "action": "removed",
+  "notes": "未发现引用；函数已从代码库删除",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.core.event_manager",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\core\\event_manager.py",
+      "name": "publish_equipment_event",
+      "kind": "function",
+      "line": 216,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "safe_to_remove",
+  "action": "removed",
+  "notes": "未发现引用；函数已从代码库删除",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.core.event_manager",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\core\\event_manager.py",
+      "name": "publish_inventory_event",
+      "kind": "function",
+      "line": 222,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "safe_to_remove",
+  "action": "removed",
+  "notes": "未发现引用；函数已从代码库删除",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.core.player",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\core\\player.py",
+      "name": "show_hand",
+      "kind": "function",
+      "line": 130,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "safe_to_remove",
+  "action": "removed",
+  "notes": "仅用于CLI调试；未被调用，已删除",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.core.player",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\core\\player.py",
+      "name": "show_board",
+      "kind": "function",
+      "line": 140,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "safe_to_remove",
+  "action": "removed",
+  "notes": "仅用于CLI调试；未被调用，已删除",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.core.player",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\core\\player.py",
+      "name": "show_status",
+      "kind": "function",
+      "line": 150,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "safe_to_remove",
+  "action": "removed",
+  "notes": "仅用于CLI调试；未被调用，已删除",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.core.save_state",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\core\\save_state.py",
+      "name": "mark_resource_collected",
+      "kind": "function",
+      "line": 175,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "与场景资源持久化配套；后续拾取流程可能会调用，暂不删除",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.core.save_state",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\core\\save_state.py",
+      "name": "restore_inventory",
+      "kind": "function",
+      "line": 243,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "存档背包恢复接口；存在配套 snapshot_inventory，保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.core.save_state",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\core\\save_state.py",
+      "name": "has_inventory",
+      "kind": "function",
+      "line": 268,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "背包存在性检查；考虑未来UI/流程使用，暂保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.game_modes.entities",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\entities.py",
+      "name": "GameLike",
+      "kind": "class",
+      "line": 64,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "类型辅助（仅注解用途）；保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.game_modes.pve_content_factory",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\pve_content_factory.py",
+      "name": "create_random_enemy",
+      "kind": "function",
+      "line": 49,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "工厂仍被 simple_pve_game 引用；且模块整体对外导出，暂保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.game_modes.pve_content_factory",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\pve_content_factory.py",
+      "name": "create_random_resource",
+      "kind": "function",
+      "line": 87,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "工厂仍被 simple_pve_game 引用；暂保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.game_modes.pve_controller",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\pve_controller.py",
+      "name": "execute_attack",
+      "kind": "function",
+      "line": 165,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "UI可通过便捷方法调用；保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.game_modes.pve_controller",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\pve_controller.py",
+      "name": "execute_skill",
+      "kind": "function",
+      "line": 175,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "同上；保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.game_modes.pve_controller",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\pve_controller.py",
+      "name": "take_resource",
+      "kind": "function",
+      "line": 201,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "命令委托封装；保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.game_modes.pve_controller",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\pve_controller.py",
+      "name": "equip_item",
+      "kind": "function",
+      "line": 210,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "命令委托封装；保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.game_modes.pve_controller",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\pve_controller.py",
+      "name": "unequip_item",
+      "kind": "function",
+      "line": 219,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "命令委托封装；保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.game_modes.pve_controller",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\pve_controller.py",
+      "name": "craft_item",
+      "kind": "function",
+      "line": 228,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "命令委托封装；保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.game_modes.pve_controller",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\pve_controller.py",
+      "name": "get_full_view",
+      "kind": "function",
+      "line": 247,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "视图渲染API；保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.game_modes.pve_controller",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\pve_controller.py",
+      "name": "refresh_view",
+      "kind": "function",
+      "line": 251,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "占位符但稳定；保留",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.game_modes.pve_controller",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\pve_controller.py",
+      "name": "_expand_log_entry",
+      "kind": "function",
+      "line": 300,
+  "reason": "未被引用（名称级粗匹配）",
+  "evaluation": "keep",
+  "action": "none",
+  "notes": "内部日志渲染辅助",
+  "timestamp": "2025-09-04"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame",
+      "kind": "class",
+      "line": 22,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._debug_scene_candidates",
+      "kind": "method",
+      "line": 138,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._write_scene_debug",
+      "kind": "method",
+      "line": 145,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._init_board",
+      "kind": "method",
+      "line": 162,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame.load_scene",
+      "kind": "method",
+      "line": 177,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame.can_navigate_back",
+      "kind": "method",
+      "line": 349,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame.navigate_back",
+      "kind": "method",
+      "line": 355,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame.transition_to_scene",
+      "kind": "method",
+      "line": 367,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame.get_state",
+      "kind": "method",
+      "line": 383,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame.start_turn",
+      "kind": "method",
+      "line": 393,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._to_character_sheet",
+      "kind": "method",
+      "line": 402,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame.end_turn",
+      "kind": "method",
+      "line": 440,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame.play_card",
+      "kind": "method",
+      "line": 449,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame.attack_enemy",
+      "kind": "method",
+      "line": 452,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame.use_skill",
+      "kind": "method",
+      "line": 598,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._get_attr",
+      "kind": "method",
+      "line": 659,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._on_card_died",
+      "kind": "method",
+      "line": 673,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._has_dual_wield",
+      "kind": "method",
+      "line": 696,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._has_shield",
+      "kind": "method",
+      "line": 708,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._unequip_and_loot",
+      "kind": "method",
+      "line": 726,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._enrich_to_hit",
+      "kind": "method",
+      "line": 754,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._enrich_damage",
+      "kind": "method",
+      "line": 804,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._handle_enemy_death",
+      "kind": "method",
+      "line": 829,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._skill_sweep",
+      "kind": "method",
+      "line": 870,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._skill_basic_heal",
+      "kind": "method",
+      "line": 925,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._skill_drain",
+      "kind": "method",
+      "line": 941,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._skill_taunt",
+      "kind": "method",
+      "line": 990,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._skill_arcane_missiles",
+      "kind": "method",
+      "line": 1004,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._skill_power_slam",
+      "kind": "method",
+      "line": 1050,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._skill_bloodlust_priority",
+      "kind": "method",
+      "line": 1086,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._skill_execute_mage",
+      "kind": "method",
+      "line": 1132,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._skill_mass_intimidate",
+      "kind": "method",
+      "line": 1180,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._skill_precise_strike",
+      "kind": "method",
+      "line": 1202,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._skill_disarm",
+      "kind": "method",
+      "line": 1243,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._skill_shield_breaker",
+      "kind": "method",
+      "line": 1270,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._skill_dual_wield_bane",
+      "kind": "method",
+      "line": 1315,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._skill_mind_over_matter",
+      "kind": "method",
+      "line": 1358,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._skill_trial_of_wisdom",
+      "kind": "method",
+      "line": 1374,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._skill_execute_wounded",
+      "kind": "method",
+      "line": 1405,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._skill_fair_distribution",
+      "kind": "method",
+      "line": 1453,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame.draw",
+      "kind": "method",
+      "line": 1477,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame.log",
+      "kind": "method",
+      "line": 1481,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame.pop_logs",
+      "kind": "method",
+      "line": 1507,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._make_enemy",
+      "kind": "method",
+      "line": 1513,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._check_on_clear_transition",
+      "kind": "method",
+      "line": 1628,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._make_resource",
+      "kind": "method",
+      "line": 1648,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._make_minion",
+      "kind": "method",
+      "line": 1674,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._equip_from_json",
+      "kind": "method",
+      "line": 1758,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "SimplePvEGame._item_from_json",
+      "kind": "method",
+      "line": 1821,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "can_navigate_back",
+      "kind": "function",
+      "line": 349,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "navigate_back",
+      "kind": "function",
+      "line": 355,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "attack_enemy",
+      "kind": "function",
+      "line": 452,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.simple_pve_game",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\simple_pve_game.py",
+      "name": "use_skill",
+      "kind": "function",
+      "line": 598,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.equipment_mixin",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\equipment_mixin.py",
+      "name": "EquipmentMixin",
+      "kind": "class",
+      "line": 10,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.equipment_mixin",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\equipment_mixin.py",
+      "name": "EquipmentMixin.get_equipment_attack",
+      "kind": "method",
+      "line": 22,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.equipment_mixin",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\equipment_mixin.py",
+      "name": "EquipmentMixin.get_equipment_defense",
+      "kind": "method",
+      "line": 31,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.equipment_mixin",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\equipment_mixin.py",
+      "name": "EquipmentMixin.get_equipment_bonus",
+      "kind": "method",
+      "line": 40,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.equipment_mixin",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\equipment_mixin.py",
+      "name": "EquipmentMixin.has_equipment",
+      "kind": "method",
+      "line": 52,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.equipment_mixin",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\equipment_mixin.py",
+      "name": "EquipmentMixin.get_equipment_info",
+      "kind": "method",
+      "line": 74,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.equipment_mixin",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\equipment_mixin.py",
+      "name": "EquipmentMixin.format_equipment_string",
+      "kind": "method",
+      "line": 123,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.equipment_mixin",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\equipment_mixin.py",
+      "name": "EquipmentMixin.safe_equipment_access",
+      "kind": "method",
+      "line": 166,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.equipment_mixin",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\equipment_mixin.py",
+      "name": "get_equipment_bonus",
+      "kind": "function",
+      "line": 40,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.equipment_mixin",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\equipment_mixin.py",
+      "name": "has_equipment",
+      "kind": "function",
+      "line": 52,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.equipment_mixin",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\equipment_mixin.py",
+      "name": "format_equipment_string",
+      "kind": "function",
+      "line": 123,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.equipment_mixin",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\equipment_mixin.py",
+      "name": "safe_equipment_access",
+      "kind": "function",
+      "line": 166,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.inventory",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\inventory.py",
+      "name": "is_full",
+      "kind": "function",
+      "line": 55,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.inventory",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\inventory.py",
+      "name": "is_full",
+      "kind": "function",
+      "line": 194,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.inventory",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\inventory.py",
+      "name": "get_all_items",
+      "kind": "function",
+      "line": 183,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.inventory",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\inventory.py",
+      "name": "get_empty_slots",
+      "kind": "function",
+      "line": 198,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.inventory",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\inventory.py",
+      "name": "sort_items",
+      "kind": "function",
+      "line": 217,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.skills",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\skills.py",
+      "name": "is_healer",
+      "kind": "function",
+      "line": 31,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.skills",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\skills.py",
+      "name": "get_heal_amount",
+      "kind": "function",
+      "line": 45,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.skill_strategy",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\skill_strategy.py",
+      "name": "register_skill",
+      "kind": "function",
+      "line": 353,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.systems.skill_strategy",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\systems\\skill_strategy.py",
+      "name": "list_available_skills",
+      "kind": "function",
+      "line": 358,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.ui.colors",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\ui\\colors.py",
+      "name": "bold",
+      "kind": "function",
+      "line": 135,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.ui.targeting.fsm",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\ui\\targeting\\fsm.py",
+      "name": "revalidate",
+      "kind": "function",
+      "line": 81,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.ui.targeting.fsm",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\ui\\targeting\\fsm.py",
+      "name": "has_candidates",
+      "kind": "function",
+      "line": 128,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.ui.tkinter.animations",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\ui\\tkinter\\animations.py",
+      "name": "slide_to",
+      "kind": "function",
+      "line": 480,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.ui.tkinter.app",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\ui\\tkinter\\app.py",
+      "name": "_cancel_skill",
+      "kind": "function",
+      "line": 833,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.ui.tkinter.app",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\ui\\tkinter\\app.py",
+      "name": "_render_resources",
+      "kind": "function",
+      "line": 849,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.ui.tkinter.app",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\ui\\tkinter\\app.py",
+      "name": "_append_info",
+      "kind": "function",
+      "line": 958,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.ui.tkinter.app",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\ui\\tkinter\\app.py",
+      "name": "_selected_index",
+      "kind": "function",
+      "line": 1007,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.ui.tkinter.app",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\ui\\tkinter\\app.py",
+      "name": "_schedule_battlefield_refresh",
+      "kind": "function",
+      "line": 1142,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.ui.tkinter.dialogs.target_picker",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\ui\\tkinter\\dialogs\\target_picker.py",
+      "name": "TargetPickerDialog",
+      "kind": "class",
+      "line": 7,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.ui.tkinter.dialogs.target_picker",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\ui\\tkinter\\dialogs\\target_picker.py",
+      "name": "TargetPickerDialog.show",
+      "kind": "method",
+      "line": 18,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.ui.tkinter.views.allies_view",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\ui\\tkinter\\views\\allies_view.py",
+      "name": "render_all",
+      "kind": "function",
+      "line": 30,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.ui.tkinter.views.enemies_view",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\ui\\tkinter\\views\\enemies_view.py",
+      "name": "render_all",
+      "kind": "function",
+      "line": 27,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.ui.pyqt.views.battlefield_view",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\ui\\pyqt\\views\\battlefield_view.py",
+      "name": "_stats_text",
+      "kind": "function",
+      "line": 244,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.mvc.model",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\mvc\\model.py",
+      "name": "_process_enemy_drops",
+      "kind": "function",
+      "line": 537,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.mvc.model",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\mvc\\model.py",
+      "name": "save_game",
+      "kind": "function",
+      "line": 590,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.mvc.model",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\mvc\\model.py",
+      "name": "check_scene_transition",
+      "kind": "function",
+      "line": 602,
+      "reason": "未被引用（名称级粗匹配）"
+    },
+    {
+      "module": "src.game_modes.mvc.view",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\src\\game_modes\\mvc\\view.py",
+      "name": "set_info",
+      "kind": "function",
+      "line": 23,
+      "reason": "未被引用（名称级粗匹配）"
+    }
+  ],
+  "suspicious_modules": [
+    {
+      "module": "scripts.battlefield_demo",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\scripts\\battlefield_demo.py",
+      "reason": "文件/模块命名提示"
+    },
+    {
+      "module": "tools.audit_unused",
+      "file": "C:\\Users\\MoSaki\\PYHS\\yyy\\tools\\audit_unused.py",
+      "reason": "文件/模块命名提示"
+    }
+  ]
+}

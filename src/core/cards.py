@@ -36,11 +36,6 @@ class Card(BaseEntity):
         self.hp = min(self.hp + amount, self.max_hp)
         safe_publish_event('card_healed', {'card': self, 'amount': int(amount), 'hp_before': prev, 'hp_after': self.hp})
 
-    def sync_state(self):
-        windfury = getattr(self, 'windfury', False)
-        total_atk = self.get_total_attack()
-        return f"{self.__class__.__name__},{total_atk},{self.hp},{self.max_hp},{self.attacks},{int(self.can_attack)},{int(windfury)}"
-
     def info(self):
         total_atk = self.get_total_attack()
         defense = self.get_total_defense()
@@ -142,7 +137,7 @@ class BattlecryCard(Card):
                                     game_ref.enemy_zone.remove(target)
                                     removed = True
                             try:
-                                publish_event('enemy_died', {'enemy': target, 'scene_changed': False})
+                                safe_publish_event('enemy_died', {'enemy': target, 'scene_changed': False})
                             except Exception:
                                 pass
                             if not removed and hasattr(game_ref, 'boss') and target is getattr(game_ref, 'boss') and getattr(target, 'hp', 1) <= 0:
@@ -156,7 +151,7 @@ class BattlecryCard(Card):
                     target.hp = max(0, prev - int(damage))
                     # 尝试作为敌人发事件
                     try:
-                        publish_event('enemy_damaged', {'enemy': target, 'amount': max(0, prev - target.hp), 'hp_before': prev, 'hp_after': target.hp})
+                        safe_publish_event('enemy_damaged', {'enemy': target, 'amount': max(0, prev - target.hp), 'hp_before': prev, 'hp_after': target.hp})
                     except Exception:
                         pass
                     if target.hp <= 0 and game is not None:
@@ -164,7 +159,7 @@ class BattlecryCard(Card):
                             game._handle_enemy_death(target)
                         else:
                             try:
-                                publish_event('enemy_died', {'enemy': target, 'scene_changed': False})
+                                safe_publish_event('enemy_died', {'enemy': target, 'scene_changed': False})
                             except Exception:
                                 pass
                 except Exception:
@@ -239,7 +234,7 @@ class CombinedCard(Card):
                                     game_ref.enemy_zone.remove(target)
                                     removed = True
                             try:
-                                publish_event('enemy_died', {'enemy': target, 'scene_changed': False})
+                                safe_publish_event('enemy_died', {'enemy': target, 'scene_changed': False})
                             except Exception:
                                 pass
                             if not removed and hasattr(game_ref, 'boss') and target is getattr(game_ref, 'boss') and getattr(target, 'hp', 1) <= 0:
@@ -252,7 +247,7 @@ class CombinedCard(Card):
                     prev = getattr(target, 'hp', 0)
                     target.hp = max(0, prev - int(damage))
                     try:
-                        publish_event('enemy_damaged', {'enemy': target, 'amount': max(0, prev - target.hp), 'hp_before': prev, 'hp_after': target.hp})
+                        safe_publish_event('enemy_damaged', {'enemy': target, 'amount': max(0, prev - target.hp), 'hp_before': prev, 'hp_after': target.hp})
                     except Exception:
                         pass
                     if target.hp <= 0 and game is not None:
@@ -260,7 +255,7 @@ class CombinedCard(Card):
                             game._handle_enemy_death(target)
                         else:
                             try:
-                                publish_event('enemy_died', {'enemy': target, 'scene_changed': False})
+                                safe_publish_event('enemy_died', {'enemy': target, 'scene_changed': False})
                             except Exception:
                                 pass
                 except Exception:
