@@ -2,20 +2,33 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..qt_compat import QtWidgets, QtCore
-
+from ..qt_compat import QtWidgets, QtCore, QtGui
+from ..dialogs.equipment_dialog import EquipmentDialog
 try:
-    Signal = QtCore.pyqtSignal  # PyQt5/6
-except Exception:  # pragma: no cover
-    Signal = None  # type: ignore
+    # 优先从全局 app 注入的 settings 读取（通过 settings.apply_to_tk_app 注入到 app_ctx）
+    # 若不可用，则直接读取 settings.tk_cfg()
+    from ... import settings as SETTINGS  # type: ignore
+except Exception:  # pragma: no cover - 容错：未找到 settings 模块
+    SETTINGS = None  # type: ignore
+Signal = QtCore.pyqtSignal
 
 
 class CardWidget(QtWidgets.QFrame):
-    """Character card widget replicating Tk card layout.
+    """角色卡片组件（PyQt6 版）。
 
-    - name (top), stats (ATK/AC), stamina capsules, HP bar, equipment slots (left/right/armor)
-    - exposes refresh(model) to update visuals
-    - on ally: equipment buttons enabled with click callbacks; on enemy: disabled
+    功能结构：
+    - 顶部名称、ATK/AC 统计、体力胶囊、HP 条、右侧装备栏（左手/盔甲/右手）。
+    - 通过 refresh(model) 刷新显示；装备栏按钮点击会弹出装备对话框（不再直接卸下）。
+    - 敌人卡片禁用装备交互；盟友卡片可交互。
+
+    输入：
+    - app_ctx: 上下文（需要提供 _slot_click、若有 _stamina_cfg/_hp_bar_cfg 则用于皮肤配置）。
+    - model: 角色模型（需要具备 name/display_name、equipment、hp/max_hp、stamina 等属性）。
+    - index1: 1 基索引，传给 app 的命令接口。
+    - is_enemy: 是否为敌方，用于禁用装备交互。
+
+    输出：
+    - 无直接返回。UI 状态根据 model 动态更新。
     """
 
     clicked = Signal() if 'Signal' in globals() and Signal else None  # type: ignore
@@ -26,12 +39,14 @@ class CardWidget(QtWidgets.QFrame):
         self.model = model
         self.index1 = index1
         self.is_enemy = is_enemy
+        # 仅对卡片外框应用样式，避免影响子控件
+        try:
+            self.setObjectName("cardRoot")
+        except Exception:
+            pass
 
         # Frame style/size (host view will set fixed size)
-        try:
-            shape = QtWidgets.QFrame.Shape.NoFrame  # PyQt6
-        except Exception:
-            shape = QtWidgets.QFrame.NoFrame  # PyQt5
+        shape = QtWidgets.QFrame.Shape.NoFrame
         self.setFrameShape(shape)
         self.apply_default_style()
 
@@ -58,7 +73,12 @@ class CardWidget(QtWidgets.QFrame):
         row_atk = QtWidgets.QHBoxLayout()
         self.lbl_atk = QtWidgets.QLabel("0")
         try:
-            atk_col = (getattr(self.app_ctx, '_stats_colors', {}) or {}).get('atk', '#E6B800')
+            # 首选 app 注入的调色板；退化到 settings.tk_cfg().stats_colors
+            atk_col = (getattr(self.app_ctx, '_stats_colors', {}) or {}).get('atk')
+            if not atk_col and SETTINGS:
+                atk_col = (SETTINGS.tk_cfg().get('stats_colors', {}) or {}).get('atk', '#E6B800')
+            if not atk_col:
+                atk_col = '#E6B800'
         except Exception:
             atk_col = '#E6B800'
         self.lbl_atk.setStyleSheet(f"color:{atk_col}; font-weight:700; font-size:12px;")
@@ -67,7 +87,11 @@ class CardWidget(QtWidgets.QFrame):
         row_ac = QtWidgets.QHBoxLayout()
         self.lbl_ac = QtWidgets.QLabel("0")
         try:
-            ac_col = (getattr(self.app_ctx, '_stats_colors', {}) or {}).get('ac', '#2980b9')
+            ac_col = (getattr(self.app_ctx, '_stats_colors', {}) or {}).get('ac')
+            if not ac_col and SETTINGS:
+                ac_col = (SETTINGS.tk_cfg().get('stats_colors', {}) or {}).get('ac', '#2980b9')
+            if not ac_col:
+                ac_col = '#2980b9'
         except Exception:
             ac_col = '#2980b9'
         self.lbl_ac.setStyleSheet(f"color:{ac_col}; font-weight:700; font-size:12px;")
@@ -86,6 +110,12 @@ class CardWidget(QtWidgets.QFrame):
             b.setFixedHeight(22)
             b.setStyleSheet("QPushButton{font-size:11px; padding:2px 6px;}")
             eq_col.addWidget(b)
+        # 标记为装备槽按钮，便于排除全卡点击
+        try:
+            for b in (self.btn_left, self.btn_armor, self.btn_right):
+                setattr(b, "_is_equipment_slot", True)
+        except Exception:
+            pass
         root.addLayout(eq_col, 0, 1, 2, 1)
 
         # Stamina capsules (row widget to allow custom bg like Tk)
@@ -94,53 +124,66 @@ class CardWidget(QtWidgets.QFrame):
         self.stamina_wrap.setContentsMargins(0, 0, 0, 0)
         self.stamina_wrap.setSpacing(0)
         # Ensure left alignment consistently
-        try:
-            self.stamina_wrap.setAlignment(getattr(QtCore.Qt, 'AlignmentFlag', QtCore.Qt).AlignLeft)
-        except Exception:
-            try:
-                self.stamina_wrap.setAlignment(QtCore.Qt.AlignLeft)
-            except Exception:
-                pass
+        self.stamina_wrap.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
         root.addWidget(self.stamina_row, 2, 0, 1, 2)
 
         # HP bar
         self.hp_bar = QtWidgets.QProgressBar()
         self.hp_bar.setTextVisible(True)
         try:
-            hp_cfg = getattr(self.app_ctx, '_hp_bar_cfg', {}) or {}
-            hp_h = int(hp_cfg.get('height', 14))
-            hp_bg = hp_cfg.get('bg', '#e0e0e0')
-            hp_fg = hp_cfg.get('fg', '#2ecc71')
+            # app_ctx 注入优先；否则直接从 settings 读取
+            hp_cfg = getattr(self.app_ctx, '_hp_bar_cfg', None)
+            if not hp_cfg and SETTINGS:
+                hp_cfg = SETTINGS.tk_cfg().get('hp_bar', {}) or {}
+            hp_h = int((hp_cfg or {}).get('height', 14))
+            hp_bg = (hp_cfg or {}).get('bg', '#e0e0e0')
+            hp_fg = (hp_cfg or {}).get('fg', '#2ecc71')
+            hp_text = (hp_cfg or {}).get('text', '#ffffff')
             self.hp_bar.setFixedHeight(max(10, hp_h))
             self.hp_bar.setStyleSheet(
-                f"QProgressBar{{border:0; background:{hp_bg}; border-radius:5px;"
-                " text-align:center; padding:0px; font-size:11px;}"
-                f" QProgressBar::chunk{{background:{hp_fg}; border:0; margin:0px; border-radius:5px;}}"
+                (
+                    f"QProgressBar{{border:0; background:{hp_bg}; border-radius:5px;}}"
+                    f" QProgressBar{{ text-align:center; padding:0px; font-size:11px; color:{hp_text};}}"
+                    f" QProgressBar::chunk{{background:{hp_fg}; border:0; margin:0px; border-radius:5px;}}"
+                )
             )
         except Exception:
             self.hp_bar.setFixedHeight(14)
             self.hp_bar.setStyleSheet(
-                "QProgressBar{border:0; background:#e0e0e0; border-radius:5px;"
-                " text-align:center; padding:0px; font-size:11px;}"
-                " QProgressBar::chunk{background:#2ecc71; border:0; margin:0px; border-radius:5px;}"
+                (
+                    "QProgressBar{border:0; background:#e0e0e0; border-radius:5px;}"
+                    " QProgressBar{ text-align:center; padding:0px; font-size:11px; color:#ffffff;}"
+                    " QProgressBar::chunk{background:#2ecc71; border:0; margin:0px; border-radius:5px;}"
+                )
             )
         root.addWidget(self.hp_bar, 3, 0, 1, 2)
 
-        # Configure buttons and clicks
+        # 绑定按钮点击逻辑
         self._wire_equipment_buttons()
+        # 仅安装用于“卡片级点击”的事件过滤；不再拦截 Hover/ToolTip（交给 Qt 默认处理）。
         try:
-            self.installEventFilter(self)
-            for w in (self.lbl_name, self.lbl_atk, self.lbl_ac, self.hp_bar):
+            for w in (self, self.lbl_name, self.lbl_atk, self.lbl_ac, self.hp_bar, self.btn_left, self.btn_armor, self.btn_right):
                 w.installEventFilter(self)
         except Exception:
             pass
-
-        # Populate initial values
+        # 初次渲染
         self.refresh(model)
 
     def apply_default_style(self) -> None:
-        # Remove extra stroke on base card; keep subtle rounded corners
-        self.setStyleSheet("QFrame { background: #fafafa; border: 0; border-radius:4px; }")
+        """应用卡片默认样式（背景色 + 1px 描边 + 圆角）。
+
+        描边/背景从 settings 注入的 app_ctx._card_cfg 读取；否则使用内置默认。
+        """
+        try:
+            cc = getattr(self.app_ctx, '_card_cfg', {}) or {}
+            bg = cc.get('bg', '#fafafa')
+            stroke = cc.get('stroke_color', '#d9d9d9')
+            w = int(cc.get('stroke_width', 1))
+            r = int(cc.get('radius', 6))
+        except Exception:
+            bg, stroke, w, r = '#fafafa', '#d9d9d9', 1, 6
+        # 仅选中本卡片外框，不影响子控件
+        self.setStyleSheet(f"#cardRoot {{ background: {bg}; border: {max(0,w)}px solid {stroke}; border-radius:{max(0,r)}px; }}")
 
     # --- helpers ---
     def _name_of(self, m: Any) -> str:
@@ -173,47 +216,127 @@ class CardWidget(QtWidgets.QFrame):
             defense = 0
         dex_mod = 0
         try:
-            dnd = getattr(m, 'dnd', None)
-            attrs = (dnd or {}).get('attrs') or (dnd or {}).get('attributes') if isinstance(dnd, dict) else None
-            if isinstance(attrs, dict):
+            dex_raw = getattr(m, 'dex', None)
+            if dex_raw is None:
+                attrs = getattr(m, 'attributes', {}) or {}
                 dex_raw = attrs.get('dex', attrs.get('DEX'))
-                if dex_raw is not None:
-                    dex_mod = (int(dex_raw) - 10) // 2
+            if dex_raw is not None:
+                dex_mod = (int(dex_raw) - 10) // 2
         except Exception:
             dex_mod = 0
         return int(10 + defense + dex_mod)
-
     def _equipment_triplet(self, m: Any):
-        eq = getattr(m, 'equipment', None)
-        left = getattr(eq, 'left_hand', None) if eq else None
-        armor = getattr(eq, 'armor', None) if eq else None
-        right_raw = getattr(eq, 'right_hand', None) if eq else None
-        right = left if getattr(left, 'is_two_handed', False) else right_raw
-        return left, armor, right
+        """返回装备三件套：左手、盔甲、右手。
 
-    def _tooltip_for_item(self, item, label: str) -> str:
+        注意：不在此处处理“双手占用右手”的逻辑，保持 right 为真实右手物品。
+        """
+        try:
+            eq = getattr(m, 'equipment', None)
+            left = getattr(eq, 'left_hand', None) if eq else None
+            armor = getattr(eq, 'armor', None) if eq else None
+            right = getattr(eq, 'right_hand', None) if eq else None
+            return left, armor, right
+        except Exception:
+            return None, None, None
+
+    def _tooltip_for_item(self, item: Any, slot_name: str) -> str:
+        """生成装备项的提示文本。
+
+        输入：item 装备对象；slot_name 槽位中文名。
+        输出：多行字符串，包含名称、攻击/防御、其它已知属性。
+        """
         if not item:
-            return f"{label}: 空槽"
-        name = getattr(item, 'name', '-')
-        parts = [name]
+            return f"{slot_name}: -"
+        lines: list[str] = [f"{slot_name}: {getattr(item, 'name', '-')}"]
         try:
-            atk = int(getattr(item, 'attack', 0) or 0)
-            if atk:
-                parts.append(f"+{atk} 攻")
+            atk = getattr(item, 'attack', None)
+            if atk is not None:
+                lines.append(f"攻击: {int(atk)}")
         except Exception:
             pass
         try:
-            dv = int(getattr(item, 'defense', 0) or 0)
-            if dv:
-                parts.append(f"+{dv} 防")
+            df = getattr(item, 'defense', None)
+            if df is not None:
+                lines.append(f"防御: {int(df)}")
         except Exception:
             pass
-        if getattr(item, 'is_two_handed', False):
-            parts.append('双手')
-        return "，".join(parts)
+        # 其它可选属性
+        for key, zh in [('hp', '生命'), ('ac', '护甲'), ('stamina', '体力')]:
+            try:
+                v = getattr(item, key, None)
+                if v is not None:
+                    lines.append(f"{zh}: {v}")
+            except Exception:
+                pass
+        return "\n".join(lines)
+
+    def _build_card_tooltip(self, m: Any) -> str:
+        """构造角色卡悬浮信息（基础段）。
+
+        包含：名称、ATK/AC、HP、属性（若有）、装备清单。
+        """
+        parts: list[str] = []
+        try:
+            parts.append(f"名称: {self._name_of(m)}")
+        except Exception:
+            pass
+        try:
+            b, eqa, tot = self._split_atk(m)
+            parts.append(f"ATK: {tot} (基础{b} + 装备{eqa})")
+        except Exception:
+            pass
+        try:
+            parts.append(f"AC: {self._compute_ac(m)}")
+        except Exception:
+            pass
+        try:
+            cur_hp = int(getattr(m, 'hp', 0)); max_hp = int(getattr(m, 'max_hp', cur_hp or 1))
+            parts.append(f"HP: {cur_hp}/{max_hp}")
+        except Exception:
+            pass
+        # 属性
+        try:
+            attrs = getattr(m, 'attributes', {}) or {}
+            mapping = [('str','力量'),('dex','敏捷'),('con','体质'),('int','智力'),('wis','感知'),('cha','魅力')]
+            lines: list[str] = []
+            for key, zh in mapping:
+                v = attrs.get(key, attrs.get(key.upper()))
+                if v is None:
+                    continue
+                try:
+                    iv = int(v)
+                    mod = (iv - 10) // 2
+                    lines.append(f"{zh} {iv}({mod:+d})")
+                except Exception:
+                    lines.append(f"{zh} {v}")
+            if lines:
+                parts.append("属性:")
+                parts.extend(lines)
+        except Exception:
+            pass
+        # 装备名称列表
+        try:
+            eq = getattr(m, 'equipment', None)
+            eq_list = []
+            if eq:
+                if getattr(eq, 'left_hand', None):
+                    eq_list.append(f"左手: {getattr(eq.left_hand, 'name', '-')}")
+                if getattr(eq, 'right_hand', None):
+                    eq_list.append(f"右手: {getattr(eq.right_hand, 'name', '-')}")
+                if getattr(eq, 'armor', None):
+                    eq_list.append(f"盔甲: {getattr(eq.armor, 'name', '-')}")
+            if eq_list:
+                parts.append("装备: " + ", ".join(eq_list))
+        except Exception:
+            pass
+        return "\n".join(parts)
 
     def _wire_equipment_buttons(self):
-        # enable/disable based on ally/enemy
+        """绑定装备栏按钮事件。
+
+    - 敌方禁用按钮；盟友连接到 _slot_click。
+        - 动态禁用（例如双手武器占用右手）在 refresh 内根据模型状态处理。
+        """
         if self.is_enemy:
             for b in (self.btn_left, self.btn_armor, self.btn_right):
                 b.setDisabled(True)
@@ -223,18 +346,33 @@ class CardWidget(QtWidgets.QFrame):
             self.btn_right.clicked.connect(lambda: self._slot_click('right'))
 
     def _slot_click(self, slot_key: str):
-        # Read current item and delegate to app ctx slot click
-        left, armor, right = self._equipment_triplet(self.model)
-        item = {'left': left, 'armor': armor, 'right': right}.get(slot_key)
+        """打开装备选择对话框并执行装备。
+
+        输入：slot_key ∈ {'left','armor','right'}。
+        行为：
+        - 弹出 EquipmentDialog，右侧仅显示可装备到该槽位的物品。
+        - 在对话框内点击物品即完成装备与背包扣减（对话框不会自动关闭）。
+        - 关闭对话框后，刷新本卡片显示。
+        """
         try:
-            if hasattr(self.app_ctx, '_slot_click'):
-                self.app_ctx._slot_click(self.index1, slot_key, item)
-        finally:
-            # After command, main window will refresh, ensure local refresh as well
+            # 以主窗口作为父级，避免刷新战场时销毁卡片导致对话框被连带关闭
+            parent = getattr(self.app_ctx, '_window_ref', None) or self
+            dlg = EquipmentDialog(self.app_ctx, parent, self.index1, slot_key)
+            _ = dlg.get_result()  # 结果仅作记录；装备已在对话框中即时完成
+        except Exception:
+            pass
+        # 不论是否选择，关闭对话框后刷新自身 UI（覆盖仅卸下的情况）
+        try:
             self.refresh(self.model)
+        except Exception:
+            pass
 
     # --- API ---
     def refresh(self, m: Any) -> None:
+        """根据当前模型刷新卡片显示。
+
+        包含：名称/ATK/AC、体力胶囊、HP 条、装备栏按钮文本/提示与可用状态。
+        """
         self.model = m
         self.lbl_name.setText(self._name_of(m))
         base, eq, tot = self._split_atk(m)
@@ -246,12 +384,14 @@ class CardWidget(QtWidgets.QFrame):
             w = item.widget()
             if w is not None:
                 w.deleteLater()
-        # config from app_ctx like Tk (_stamina_cfg)
-        st_cfg = getattr(self.app_ctx, '_stamina_cfg', {}) or {}
-        # Remove extra background fill; keep row transparent for a cleaner look
-        bgc = 'transparent'
-        max_caps = int(st_cfg.get('max_caps', 6))
-        colors = st_cfg.get('colors', {}) or {}
+        # config from settings/app_ctx
+        st_cfg = getattr(self.app_ctx, '_stamina_cfg', None)
+        if not st_cfg and SETTINGS:
+            st_cfg = (SETTINGS.tk_cfg().get('stamina', {}) or {})
+        # 体力行背景色（从 settings 读取；未提供则透明）
+        bgc = str((st_cfg or {}).get('bg', 'transparent'))
+        max_caps = int((st_cfg or {}).get('max_caps', 6))
+        colors = (st_cfg or {}).get('colors', {}) or {}
         col_on = colors.get('on', '#2ecc71')
         col_off = colors.get('off', '#e74c3c')
         try:
@@ -259,19 +399,25 @@ class CardWidget(QtWidgets.QFrame):
         except Exception:
             cur, mx = 0, 1
         show_n = min(mx, max_caps)
+        # 是否显示体力（settings.ui.tk.stamina.enabled）
+        st_enabled = bool((st_cfg or {}).get('enabled', True))
         # apply row background (transparent)
         self.stamina_row.setStyleSheet(f"QWidget{{background:{bgc}; border:0;}}")
-        for i in range(show_n):
-            seg = QtWidgets.QFrame()
-            try:
+        if st_enabled and show_n > 0:
+            for i in range(show_n):
+                seg = QtWidgets.QFrame()
                 shape = QtWidgets.QFrame.Shape.NoFrame
-            except Exception:
-                shape = QtWidgets.QFrame.NoFrame
-            seg.setFrameShape(shape)
-            seg.setFixedSize(8, 16)
-            color = col_on if i < cur else col_off
-            seg.setStyleSheet(f"QFrame {{ background: {color}; border: 0; border-radius:4px; }}")
-            self.stamina_wrap.addWidget(seg)
+                seg.setFrameShape(shape)
+                seg.setFixedSize(8, 16)
+                color = col_on if i < cur else col_off
+                # 体力胶囊：需要 1px 描边（其余子项仍不描边）
+                try:
+                    sc = (st_cfg or {}).get('stroke_color', '#cfd8dc')
+                    sw = int((st_cfg or {}).get('stroke_width', 1))
+                except Exception:
+                    sc, sw = '#cfd8dc', 1
+                seg.setStyleSheet(f"QFrame {{ background: {color}; border: {max(0,sw)}px solid {sc}; border-radius:4px; }}")
+                self.stamina_wrap.addWidget(seg)
 
         # HP bar
         try:
@@ -282,20 +428,82 @@ class CardWidget(QtWidgets.QFrame):
         self.hp_bar.setValue(cur_hp)
         self.hp_bar.setFormat(f"{cur_hp}/{max_hp}")
 
-        # Equipment buttons text and tooltip
+        # 装备栏：按钮文本/提示/禁用状态
         left, armor, right = self._equipment_triplet(m)
-        # Keep button labels short to avoid crowding; put details in tooltip
+        # 文本显示当前装备名（无则短横），提示包含详细属性
+        self.btn_left.setText((getattr(left, 'name')) if left and getattr(left, 'name', None) else '左手: -')
+        self.btn_armor.setText((getattr(armor, 'name')) if armor and getattr(armor, 'name', None) else '盔甲: -')
+        # 右手文本受双手武器影响：若左手为双手，则右手按钮禁用，但仍显示“当前右手装备的名称（若有）”。
+        lh_two_handed = bool(getattr(left, 'is_two_handed', False)) if left else False
+        # 若左手为双手，则右手显示同一把双手武器名称（但禁用）；否则显示真实右手装备
+        if lh_two_handed:
+            show_item = left
+        else:
+            show_item = right
+        self.btn_right.setText((getattr(show_item, 'name')) if show_item and getattr(show_item, 'name', None) else '右手: -')
+
         self.btn_left.setToolTip(self._tooltip_for_item(left, '左手'))
         self.btn_armor.setToolTip(self._tooltip_for_item(armor, '盔甲'))
-        self.btn_right.setToolTip(self._tooltip_for_item(right, '右手'))
+        # 双手武器占用右手时，提示原因
+        if lh_two_handed:
+            # 右手显示为左手双手武器的信息，并追加受限说明
+            base_tip = self._tooltip_for_item(left, '右手') if left else '右手: -'
+            self.btn_right.setToolTip(base_tip + "\n(当前持双手武器，右手被占用)")
+        else:
+            self.btn_right.setToolTip(self._tooltip_for_item(right, '右手'))
 
-    # --- event filter to emit card-level click ---
+        # 根据敌友与双手武器状态动态禁用按钮
+        if self.is_enemy:
+            for b in (self.btn_left, self.btn_armor, self.btn_right):
+                b.setDisabled(True)
+        else:
+            self.btn_left.setDisabled(False)
+            self.btn_armor.setDisabled(False)
+            # 左手为双手武器 -> 右手禁用
+            self.btn_right.setDisabled(lh_two_handed)
+        # 卡片整体与 ATK/HP/AC 的提示：回退为系统 ToolTip（静态文本，由 Qt 管理显示/隐藏）
+        self._update_tooltips()
+
+    def _update_tooltips(self) -> None:
+        """更新卡片整体与局部标签的系统 ToolTip 文本。
+
+        - 卡片整体：展示综合角色信息（名称/ATK/AC/HP/属性/装备清单）。
+        - ATK 标签：展示基础与装备构成。
+        - HP 条：展示当前/最大 HP。
+        """
+        try:
+            # 卡片整体
+            self.setToolTip(self._build_card_tooltip(self.model))
+        except Exception:
+            pass
+        # ATK 细节
+        try:
+            b, eqa, tot = self._split_atk(self.model)
+            self.lbl_atk.setToolTip(f"总攻击: {tot}\n基础: {b}\n装备: {eqa}")
+        except Exception:
+            try:
+                self.lbl_atk.setToolTip("")
+            except Exception:
+                pass
+        # HP 细节
+        try:
+            cur_hp = int(getattr(self.model, 'hp', 0)); max_hp = int(getattr(self.model, 'max_hp', cur_hp or 1))
+            self.hp_bar.setToolTip(f"HP: {cur_hp}/{max_hp}")
+        except Exception:
+            try:
+                self.hp_bar.setToolTip("")
+            except Exception:
+                pass
+
+    # --- event filter: 仅用于“卡片级点击” ---
     def eventFilter(self, obj, event):  # noqa: N802 (Qt signature)
         try:
             et = getattr(QtCore.QEvent, 'Type', QtCore.QEvent)
             mpress = getattr(et, 'MouseButtonPress', 2)
+            targets = (self, self.lbl_name, self.lbl_atk, self.lbl_ac, self.hp_bar, self.btn_left, self.btn_armor, self.btn_right)
+
+            # 卡片级点击透传
             if event.type() == mpress:
-                # ignore equipment button clicks
                 if obj in (self.btn_left, self.btn_right, self.btn_armor):
                     return False
                 if hasattr(self, 'clicked') and self.clicked:
@@ -303,7 +511,9 @@ class CardWidget(QtWidgets.QFrame):
                         self.clicked.emit()  # type: ignore[attr-defined]
                     except Exception:
                         pass
-                    return False
+                return False
+
+            # 其余事件（Enter/Leave/Hover/ToolTip）统一交给 Qt 默认 ToolTip 行为处理
         except Exception:
             pass
         return super().eventFilter(obj, event)

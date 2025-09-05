@@ -160,11 +160,7 @@ class MenuWindow(QtWidgets.QMainWindow):
         v.addWidget(btns)
         btns.accepted.connect(dlg.accept)
         btns.rejected.connect(dlg.reject)
-        accepted = None
-        if hasattr(dlg, 'exec_'):
-            accepted = (dlg.exec_() == QtWidgets.QDialog.Accepted)
-        else:
-            accepted = (dlg.exec() == QtWidgets.QDialog.DialogCode.Accepted)
+        accepted = (dlg.exec() == QtWidgets.QDialog.DialogCode.Accepted)
         if accepted:
             row = lb.currentRow()
             if row >= 0:
@@ -217,12 +213,7 @@ class MenuWindow(QtWidgets.QMainWindow):
         grid.addWidget(btns, 2, 0, 1, 2)
         btns.accepted.connect(dlg.accept)
         btns.rejected.connect(dlg.reject)
-
-        accepted = None
-        if hasattr(dlg, 'exec_'):
-            accepted = (dlg.exec_() == QtWidgets.QDialog.Accepted)
-        else:
-            accepted = (dlg.exec() == QtWidgets.QDialog.DialogCode.Accepted)
+        accepted = (dlg.exec() == QtWidgets.QDialog.DialogCode.Accepted)
         if accepted:
             r = lbp.currentRow()
             if r < 0:

@@ -100,7 +100,12 @@ DEFAULTS: Dict[str, Any] = {
 			"card": {
 				# 卡片默认尺寸（尽量紧凑；体力行存在时视图层会保证最小高度不被裁切）
 				"width": 160,
-				"height": 120
+				"height": 120,
+				# 卡片描边（PyQt）
+				"stroke_color": "#d9d9d9",
+				"stroke_width": 1,
+				"radius": 6,
+				"bg": "#fafafa"
 			},
 			"stamina": {
 				# 体力显示（角色卡左上角的胶囊/条）
@@ -112,6 +117,9 @@ DEFAULTS: Dict[str, Any] = {
 					"off": "#e74c3c"       # 已消耗体力颜色（红）
 				},
 				"shape": "capsule",       # 形状占位（暂不区分，统一用小竖条表示）
+				# 胶囊描边（PyQt）
+				"stroke_color": "#3b3e3fff",
+				"stroke_width": 1
 			},
 			"hp_bar": {
 				# 血量条（显示在体力条下方）
@@ -119,6 +127,18 @@ DEFAULTS: Dict[str, Any] = {
 				"bg": "#e5e7eb",
 				"fg": "#e74c3c",          # 血条填充色（红）
 				"text": "#ffffff"          # 覆盖文字颜色
+			},
+			"equipment": {
+				# 装备窗口/网格配置（PyQt）
+				"dialog": { "width": 640, "height": 520, "layout": "vertical" },
+				"rarity_colors": {
+					"common": "#BDBDBD",
+					"uncommon": "#4CAF50",
+					"rare": "#2196F3",
+					"epic": "#9C27B0",
+					"legendary": "#FF9800"
+				},
+				"grid": { "cell": 72, "cols": 6, "bg": "#f9f9fb", "line": "#e5e7eb" }
 			},
 			"log": {
 				"tags": {
@@ -328,7 +348,20 @@ def apply_to_tk_app(app) -> None:
 			"colors": {
 				"on": (st.get("colors", {}) or {}).get("on", "#2ecc71"),
 				"off": (st.get("colors", {}) or {}).get("off", "#e74c3c"),
-			}
+			},
+			"stroke_color": st.get("stroke_color", "#000000"),
+			"stroke_width": int(st.get("stroke_width", 1)),
+		}
+	except Exception:
+		pass
+	# expose card frame config (PyQt)
+	try:
+		cc = cfg_tk.get("card", {}) or {}
+		app._card_cfg = {
+			"bg": cc.get("bg", "#fafafa"),
+			"stroke_color": cc.get("stroke_color", "#d9d9d9"),
+			"stroke_width": int(cc.get("stroke_width", 1)),
+			"radius": int(cc.get("radius", 6)),
 		}
 	except Exception:
 		pass
@@ -339,6 +372,25 @@ def apply_to_tk_app(app) -> None:
 			"bg": cfg_tk.get("hp_bar", {}).get("bg", "#e5e7eb"),
 			"fg": cfg_tk.get("hp_bar", {}).get("fg", "#e74c3c"),
 			"text": cfg_tk.get("hp_bar", {}).get("text", "#ffffff"),
+		}
+	except Exception:
+		pass
+	# expose equipment config (PyQt dialogs)
+	try:
+		eq = cfg_tk.get("equipment", {}) or {}
+		app._equipment_cfg = {
+			"dialog": {
+				"width": int((eq.get("dialog", {}) or {}).get("width", 640)),
+				"height": int((eq.get("dialog", {}) or {}).get("height", 520)),
+				"layout": str((eq.get("dialog", {}) or {}).get("layout", "vertical"))
+			},
+			"rarity_colors": dict(eq.get("rarity_colors", {}) or {}),
+			"grid": {
+				"cell": int((eq.get("grid", {}) or {}).get("cell", 72)),
+				"cols": int((eq.get("grid", {}) or {}).get("cols", 6)),
+				"bg": (eq.get("grid", {}) or {}).get("bg", "#f9f9fb"),
+				"line": (eq.get("grid", {}) or {}).get("line", "#e5e7eb"),
+			},
 		}
 	except Exception:
 		pass

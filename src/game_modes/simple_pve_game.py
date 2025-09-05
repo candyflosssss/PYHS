@@ -1794,8 +1794,9 @@ class SimplePvEGame:
                 # 支持 passives/active_skills 字段
                 act_sk = it.get('active_skills') or []
                 psv = it.get('passives') or {}
+                rarity = str(it.get('rarity', 'common') or 'common').lower()
                 if t == 'weapon':
-                    w = WeaponItem(str(name), str(desc), dur, attack=atk, slot_type=str(slot), is_two_handed=two, active_skills=act_sk, passives=psv)
+                    w = WeaponItem(str(name), str(desc), dur, attack=atk, slot_type=str(slot), is_two_handed=two, active_skills=act_sk, passives=psv, rarity=rarity)
                     # 允许武器带防御（供双手武器提供防御加成）
                     try:
                         w.defense = int(dfn)
@@ -1803,10 +1804,10 @@ class SimplePvEGame:
                         pass
                     card.equipment.equip(w, game=self)
                 elif t == 'armor':
-                    a = ArmorItem(str(name), str(desc), dur, defense=dfn, slot_type='armor', active_skills=act_sk, passives=psv)
+                    a = ArmorItem(str(name), str(desc), dur, defense=dfn, slot_type='armor', active_skills=act_sk, passives=psv, rarity=rarity)
                     card.equipment.equip(a, game=self)
                 elif t == 'shield':
-                    s = ShieldItem(str(name), str(desc), dur, defense=dfn, attack=atk, active_skills=act_sk, passives=psv)
+                    s = ShieldItem(str(name), str(desc), dur, defense=dfn, attack=atk, active_skills=act_sk, passives=psv, rarity=rarity)
                     card.equipment.equip(s, game=self)
                 else:
                     # 未知类型忽略
@@ -1843,21 +1844,22 @@ class SimplePvEGame:
         two = bool(it.get('two_handed', it.get('twoHanded', False)))
         act_sk = it.get('active_skills') or []
         psv = it.get('passives') or {}
+        rarity = str(it.get('rarity', 'common') or 'common').lower()
         try:
             if t == 'weapon':
-                w = WeaponItem(str(name), str(desc), dur, attack=atk, slot_type=str(slot), is_two_handed=two, active_skills=act_sk, passives=psv)
+                w = WeaponItem(str(name), str(desc), dur, attack=atk, slot_type=str(slot), is_two_handed=two, active_skills=act_sk, passives=psv, rarity=rarity)
                 try:
                     w.defense = int(dfn)
                 except Exception:
                     pass
                 return w, qty
             if t == 'armor':
-                a = ArmorItem(str(name), str(desc), dur, defense=dfn, slot_type='armor', active_skills=act_sk, passives=psv)
+                a = ArmorItem(str(name), str(desc), dur, defense=dfn, slot_type='armor', active_skills=act_sk, passives=psv, rarity=rarity)
                 return a, qty
             if t == 'shield':
-                s = ShieldItem(str(name), str(desc), dur, defense=dfn, attack=atk, active_skills=act_sk, passives=psv)
+                s = ShieldItem(str(name), str(desc), dur, defense=dfn, attack=atk, active_skills=act_sk, passives=psv, rarity=rarity)
                 return s, qty
-            # 其他类型：尝试 consumable/material
+            # 其他类型：尝试 consumable/material（此处暂不解析 rarity）
             if t == 'potion' or t == 'consumable':
                 return ConsumableItem(str(name), str(desc), max_stack=8), max(1, qty)
             # 默认材料

@@ -2,12 +2,24 @@ from src.ui import colors as C
 from src.core.events import publish as publish_event
 
 class Item:
-    """物品基类"""
-    def __init__(self, name, item_type="普通", max_stack=1, description=""):
+    """物品基类
+
+    字段：
+    - name: 名称
+    - item_type: 物品类型
+    - max_stack: 最大堆叠数量
+    - description: 描述
+    - rarity: 稀有度（新增），字符串：common/uncommon/rare/epic/legendary（默认 common）。
+
+    备注：从 JSON/YAML 加载物品时，如包含 `rarity` 字段，将自动保存在此处，
+    供 UI（如 PyQt 装备对话框）进行着色或排序。
+    """
+    def __init__(self, name, item_type="普通", max_stack=1, description="", rarity: str = "common"):
         self.name = name
         self.item_type = item_type  # 物品类型：装备、消耗品、材料等
         self.max_stack = max_stack  # 最大堆叠数量
         self.description = description
+        self.rarity = (rarity or "common").lower()
     
     def __str__(self):
         return C.resource(f"{self.name}({self.item_type})")
@@ -312,9 +324,13 @@ class Inventory:
 
 # 预定义一些常见物品类型
 class EquipmentItem(Item):
-    """装备物品（不可堆叠）"""
-    def __init__(self, name, description="", durability=100):
-        super().__init__(name, "装备", max_stack=1, description=description)
+    """装备物品（不可堆叠）
+
+    新增：支持稀有度 `rarity` 字段，默认 "common"，用于 UI 着色与排序。
+    """
+    def __init__(self, name, description="", durability=100, *, rarity: str = "common"):
+        # 透传 rarity 到基类，便于 UI 使用
+        super().__init__(name, "装备", max_stack=1, description=description, rarity=rarity)
         self.durability = durability
         self.max_durability = durability
 

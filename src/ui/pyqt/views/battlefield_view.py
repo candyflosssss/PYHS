@@ -37,14 +37,16 @@ class BattlefieldView(QtWidgets.QWidget):
         try:
             self.grp_allies.setFlat(False)
             self.grp_enemies.setFlat(False)
-            # Subtle region borders, title on the left, small radius
+            # 从 settings 注入的边框色（优先用 arena 的 ally/enemy 边框色）
+            ally_col = getattr(self.app_ctx, 'ALLY_BORDER', '#4A90E2')
+            enemy_col = getattr(self.app_ctx, 'ENEMY_BORDER', '#E74C3C')
+            radius = int(getattr(getattr(self.app_ctx, '_card_cfg', {}), 'get', lambda k, d: d)('radius', 6)) if hasattr(self.app_ctx, '_card_cfg') else 6
+            base = f"border-radius:{radius}px; font-weight:600; margin-top:8px; padding-top:12px;"
             self.grp_allies.setStyleSheet(
-                "QGroupBox{border:1px solid #d9d9d9; border-radius:6px; font-weight:600; margin-top:8px; padding-top:12px;}"
-                " QGroupBox::title{subcontrol-origin: margin; left:8px; padding:0 4px;}"
+                f"QGroupBox{{border:1px solid {ally_col}; {base}}} QGroupBox::title{{subcontrol-origin: margin; left:8px; padding:0 4px;}}"
             )
             self.grp_enemies.setStyleSheet(
-                "QGroupBox{border:1px solid #d9d9d9; border-radius:6px; font-weight:600; margin-top:8px; padding-top:12px;}"
-                " QGroupBox::title{subcontrol-origin: margin; left:8px; padding:0 4px;}"
+                f"QGroupBox{{border:1px solid {enemy_col}; {base}}} QGroupBox::title{{subcontrol-origin: margin; left:8px; padding:0 4px;}}"
             )
         except Exception:
             pass
@@ -57,11 +59,8 @@ class BattlefieldView(QtWidgets.QWidget):
         # Wrap grids with inner content widgets so the grid can keep its minimum size
         # and align to left/right without stretching columns. This keeps cards packed
         # tightly "one next to another" like Tk.
-        # Qt5/Qt6 alignment enum compatibility
-        try:
-            AF = QtCore.Qt.AlignmentFlag  # PyQt6
-        except Exception:  # PyQt5 fallback
-            AF = QtCore.Qt  # type: ignore
+        # Alignment enum (PyQt6)
+        AF = QtCore.Qt.AlignmentFlag
 
         self._allies_container = QtWidgets.QWidget(self.grp_allies)
         self._allies_grid = QtWidgets.QGridLayout(self._allies_container)
@@ -206,7 +205,7 @@ class BattlefieldView(QtWidgets.QWidget):
         for idx, card in list(self._ally_cards.items()):
             tok = f"m{idx}"
             if tok in sel:
-                apply(card, self.app_ctx.HL['sel_ally_border'], self.app_ctx.HL['sel_ally_bg'])
+                AF = QtCore.Qt.AlignmentFlag
             elif tok in cand:
                 apply(card, self.app_ctx.HL['cand_ally_border'], self.app_ctx.HL['cand_ally_bg'])
 

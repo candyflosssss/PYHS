@@ -143,9 +143,18 @@ class GameQtApp:
             out = self._send(f"eq i{idx} {token}")
             self.after_cmd(out)
             return
-        # has item -> unequip directly for simplicity
+        # has item -> unequip；若左手为双手武器且点击右手，映射为卸下左手（与 Tk 行为一致）
         token = f"m{m_index}"
-        slot = {'left': 'left', 'right': 'right', 'armor': 'armor'}.get(slot_key, slot_key)
+        effective = slot_key
+        try:
+            board = self.controller.game.player.board if self.controller else []
+            m = board[m_index - 1] if (board and 0 <= m_index - 1 < len(board)) else None
+            eq = getattr(m, 'equipment', None)
+            if slot_key == 'right' and eq and getattr(eq, 'left_hand', None) and getattr(eq.left_hand, 'is_two_handed', False):
+                effective = 'left'
+        except Exception:
+            pass
+        slot = {'left': 'left', 'right': 'right', 'armor': 'armor'}.get(effective, effective)
         out = self._send(f"uneq {token} {slot}")
         self.after_cmd(out)
 

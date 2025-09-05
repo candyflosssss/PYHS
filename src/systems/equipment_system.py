@@ -9,20 +9,26 @@ class WeaponItem(EquipmentItem):
     - active_skills: [skill_id,...] 装备后可用的主动技能（会出现在操作栏）
     - passives: dict 被动效果声明（示例：{'lifesteal_on_attack_stat': 'str'}）
     """
-    def __init__(self, name, description="", durability=100, attack=0, slot_type="right_hand", is_two_handed=False,
-                 active_skills=None, passives=None):
-        super().__init__(name, description, durability)
+    def __init__(self, name, description="", durability=100, attack=0, defense=0, slot_type="right_hand", is_two_handed=False,
+                 active_skills=None, passives=None, *, rarity: str = "common"):
+        super().__init__(name, description, durability, rarity=rarity)
         self.attack = attack
-        self.defense = 0
+        # 支持武器附带防御（如法杖既有攻也有防）
+        self.defense = defense
         self.slot_type = slot_type
         self.is_two_handed = is_two_handed
         self.active_skills = list(active_skills or [])
         self.passives = dict(passives or {})
     
     def __str__(self):
-        if self.is_two_handed:
-            return C.resource(f"{self.name}(双手武器 +{self.attack}攻)")
-        return C.resource(f"{self.name}(武器 +{self.attack}攻)")
+        parts = []
+        if self.attack:
+            parts.append(f"+{self.attack}攻")
+        if getattr(self, 'defense', 0):
+            parts.append(f"+{self.defense}防")
+        kind = "双手武器" if self.is_two_handed else "武器"
+        stat = " ".join(parts) if parts else ""
+        return C.resource(f"{self.name}({kind} {stat})")
 
 class ArmorItem(EquipmentItem):
     """防具装备
@@ -32,8 +38,8 @@ class ArmorItem(EquipmentItem):
     - {'reflect_on_damaged': 'stamina_cost_1'}   受伤时若有体力则消耗1并反伤
     """
     def __init__(self, name, description: str = "", durability: int = 100, defense: int = 0, slot_type: str = "armor",
-                 active_skills=None, passives=None):
-        super().__init__(name, description, durability)
+                 active_skills=None, passives=None, *, rarity: str = "common"):
+        super().__init__(name, description, durability, rarity=rarity)
         self.attack = 0
         self.defense = defense
         self.slot_type = slot_type
@@ -46,8 +52,8 @@ class ArmorItem(EquipmentItem):
 
 class ShieldItem(EquipmentItem):
     """盾牌装备（左手）"""
-    def __init__(self, name, description="", durability=100, defense=0, attack=0, active_skills=None, passives=None):
-        super().__init__(name, description, durability)
+    def __init__(self, name, description="", durability=100, defense=0, attack=0, active_skills=None, passives=None, *, rarity: str = "common"):
+        super().__init__(name, description, durability, rarity=rarity)
         self.attack = attack
         self.defense = defense
         self.slot_type = "left_hand"

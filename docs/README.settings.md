@@ -15,7 +15,7 @@
   "console": { "theme": "default" },
   "ui": {
     "tk": {
-      "card": { "width": 180, "height": 80 },
+  "card": { "width": 180, "height": 80, "stroke_color": "#d9d9d9", "stroke_width": 1, "radius": 6, "bg": "#fafafa" },
       "border": { "default": 3, "selected_enemy": 3, "selected_member": 3 },
       "highlight": {
         "cand_enemy_border": "#FAD96B",
@@ -29,9 +29,10 @@
       },
       "overlay": { "target_alpha": 0.8, "fade_interval_ms": 16, "fade_step": 0.1 },
       "scene_transition": { "delay_ms": 250 },
-      "tooltip": { "tick_ms": 120 },
+  "tooltip": { "tick_ms": 120 },
       "stats_colors": { "atk": "#E6B800", "hp_pos": "#27ae60", "hp_zero": "#c0392b", "ac": "#2980b9" },
-      "log": { "tags": { "info": "#222", "success": "#27ae60", "warning": "#E67E22", "error": "#d9534f", "state": "#666", "attack": "#c0392b", "heal": "#27ae60", "crit": "#8E44AD", "miss": "#95A5A6", "block": "#2C3E50" } }
+  "log": { "tags": { "info": "#222", "success": "#27ae60", "warning": "#E67E22", "error": "#d9534f", "state": "#666", "attack": "#c0392b", "heal": "#27ae60", "crit": "#8E44AD", "miss": "#95A5A6", "block": "#2C3E50" } },
+  "stamina": { "enabled": true, "max_caps": 20, "bg": "#f2f3f5", "colors": { "on": "#2ecc71", "off": "#e74c3c" }, "stroke_color": "#cfd8dc", "stroke_width": 1 }
     },
     "animations": {
       "enabled": true,
@@ -44,6 +45,39 @@
   }
 }
 ```
+
+### 装备窗口（EquipmentDialog）
+
+装备窗口的尺寸、网格参数、稀有度描边颜色均可在 `ui.tk.equipment` 下配置：
+
+```jsonc
+{
+  "ui": {
+    "tk": {
+      "equipment": {
+        "dialog": { "width": 640, "height": 520 },
+        "rarity_colors": {
+          "common": "#BDBDBD",
+          "uncommon": "#4CAF50",
+          "rare": "#2196F3",
+          "epic": "#9C27B0",
+          "legendary": "#FF9800"
+        },
+        "grid": {
+          "cell": 72,          // 单个格子像素（正方形）
+          "cols": 6,           // 最大列数（实际列数会按窗口宽度动态取 min(max_cols, width//cell)）
+          "bg": "#f9f9fb",    // 背景色
+          "line": "#e5e7eb"   // 方格线颜色
+        }
+      }
+    }
+  }
+}
+```
+
+说明：
+- 对话框实际宽度在运行时会取配置宽度的一半，用于更紧凑布局；可通过用户配置直接覆盖为目标值。
+- 背包网格支持“仅垂直滚动”，并在窗口尺寸变化时根据可用宽度自动调整列数，避免出现“半格”。
 
 ## 生效范围
 

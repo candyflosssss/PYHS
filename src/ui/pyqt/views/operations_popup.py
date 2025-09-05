@@ -18,14 +18,11 @@ class OperationsPopup(QtWidgets.QFrame):
     """
 
     def __init__(self, app_ctx, member_index: int):
-        try:
-            flag = QtCore.Qt.WindowType.Popup  # PyQt6
-        except Exception:
-            flag = QtCore.Qt.Popup  # PyQt5
+        flag = QtCore.Qt.WindowType.Popup
         super().__init__(flags=flag)
         self.app_ctx = app_ctx
         self.member_index = member_index
-        self.setFrameShape(QtWidgets.QFrame.StyledPanel)
+        self.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
         self.setStyleSheet("QFrame { background: white; border: 1px solid #bbb; }")
         self.setWindowTitle("操作")
 
@@ -67,20 +64,7 @@ class OperationsPopup(QtWidgets.QFrame):
         self.v.addWidget(self._target_wrap)
         self._render_targets()
 
-        # Equipment actions
-        eq_group = QtWidgets.QGroupBox("装备")
-        eq_lay = QtWidgets.QHBoxLayout(eq_group)
-        btn_eq = QtWidgets.QPushButton("装备物品…")
-        btn_ul = QtWidgets.QPushButton("卸左手")
-        btn_ur = QtWidgets.QPushButton("卸右手")
-        btn_ua = QtWidgets.QPushButton("卸护甲")
-        btn_eq.clicked.connect(self._equip_item)
-        btn_ul.clicked.connect(lambda: self._uneq('left'))
-        btn_ur.clicked.connect(lambda: self._uneq('right'))
-        btn_ua.clicked.connect(lambda: self._uneq('armor'))
-        for b in (btn_eq, btn_ul, btn_ur, btn_ua):
-            eq_lay.addWidget(b)
-        self.v.addWidget(eq_group)
+    # 装备相关操作已迁出至角色卡装备栏/对话框，此处不再提供装备区。
 
         # Confirm/Cancel
         ctrl = QtWidgets.QHBoxLayout()
@@ -204,38 +188,6 @@ class OperationsPopup(QtWidgets.QFrame):
         self.app_ctx.cancel_skill()
         self.close()
 
-    # --- equipment helpers ---
-    def _equip_item(self):
-        # Build inventory items for dialog
-        try:
-            text = self.app_ctx.controller._section_inventory()
-            items = []
-            for line in (text or '').splitlines():
-                s = (line or '').strip().rstrip()
-                if not s:
-                    continue
-                if s.endswith('):') or s.endswith(':'):
-                    continue
-                items.append(s)
-        except Exception:
-            items = []
-        from ..dialogs.equipment_dialog import EquipmentDialog
-        dlg = EquipmentDialog(self, items)
-        idx = dlg.get_result()
-        if idx is None:
-            return
-        token = f"m{self.member_index}"
-        out = self.app_ctx._send(f"eq i{idx} {token}")
-        self.app_ctx.after_cmd(out)
-        # refresh popup state
-        self._render_targets()
-        self._refresh_confirm_state()
-
-    def _uneq(self, slot: str):
-        token = f"m{self.member_index}"
-        out = self.app_ctx._send(f"uneq {token} {slot}")
-        self.app_ctx.after_cmd(out)
-        self._render_targets()
-        self._refresh_confirm_state()
+    #（移除装备弹窗与卸下入口）
 
 
